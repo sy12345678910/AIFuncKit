@@ -1,9 +1,9 @@
-# 🌌 IntentC (`intent-c`)
+# IntentC (`intent-c`)
 
-[![Python Version](https://shields.io)](https://python.org)
-[![License](https://shields.io)](LICENSE)
-[![Framework](https://shields.io)]()
-[![Backend](https://shields.io)]()
+[Python Version](https://python.org)
+[License](LICENSE)
+[Framework]()
+[Backend]
 
 **IntentC** is an ultra-lightweight, high-performance asynchronous micro-framework designed to compile human language intentions into deterministic, production-ready execution flows. 
 
@@ -74,7 +74,7 @@ class HomeAutomationPlugin(BasePlugin):
 
 async def main():
     # 2. Instantiate the zero-overhead engine
-    engine = AIEngine(ai_model="qwen2.5:3b", routing_model="vector")
+    engine = AIEngine(ai_model="gemma4-e4b", routing_model="vector")
     await engine.initialize()
     
     # 3. Register your capabilities into RAM cached metadata
