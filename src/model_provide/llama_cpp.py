@@ -15,6 +15,7 @@ async def generate_with_llama_cpp(
     format: Any,
     context_window: int = 4096,
 ) -> str:
+    """Generate a JSON-structured response through a local llama.cpp model."""
     global _llm
     try:
         if not _llm:
@@ -35,8 +36,9 @@ async def generate_with_llama_cpp(
         raise
 
     def run() -> str:
-        schema = format.model_json_schema() if hasattr(format, "model_json_schema") else format
-        res = _llm.create_chat_completion(
+        """Run the local llama.cpp completion call in a thread-safe executor."""
+        schema: Any = format.model_json_schema() if hasattr(format, "model_json_schema") else format
+        response: Any = _llm.create_chat_completion(
             messages=[
                 {"role": "system", "content": prompt},
                 {"role": "user", "content": user_prompt},
@@ -48,10 +50,10 @@ async def generate_with_llama_cpp(
                 "schema": schema,
             },
         )
-        return str(res["choices"][0]["message"]["content"])
+        return str(response["choices"][0]["message"]["content"])
 
     try:
-        content = await asyncio.to_thread(run)
+        content: str = await asyncio.to_thread(run)
         logger.info("llama.cpp generation succeeded for '%s'", model_path)
         return content
     except Exception as exc:

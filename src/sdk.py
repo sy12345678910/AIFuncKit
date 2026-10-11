@@ -8,30 +8,34 @@ from log_config import logger
 
 
 class BasePlugin(ABC):
+    """Base class for all runtime plugins that expose action methods."""
+
     type: str
     plugin_name: str
     file: str
 
     def __init__(self) -> None:
+        """Create an empty live-context dictionary for dynamic plugin state."""
         self.live_context: dict[str, Any] = {}
 
     def get_methods(self) -> list[dict[str, Any]]:
+        """Collect all decorated action methods and their metadata for registration."""
         methods_list: list[dict[str, Any]] = []
 
         for attr_name in dir(self):
             if attr_name.startswith("_"):
                 continue
 
-            attr = getattr(self, attr_name)
+            attr: Any = getattr(self, attr_name)
 
             if callable(attr) and hasattr(attr, "_desc"):
-                sig = inspect.signature(attr)
+                sig: inspect.Signature = inspect.signature(attr)
                 args_types: dict[str, str] = {}
 
                 for param_name, param in sig.parameters.items():
                     if param_name in ["self", "args", "kwargs"]:
                         continue
-                    p_type = (
+                    p_type: Any = (
                         param.annotation
                         if param.annotation != inspect.Parameter.empty
                         else str
@@ -55,18 +59,24 @@ class BasePlugin(ABC):
         return methods_list
 
     def verify_environment(self) -> tuple[str, ...]:
+        """Return a tuple of required environment checks for the plugin."""
         return ()
 
     def get_live_context(self) -> dict[str, Any]:
+        """Return the current plugin runtime context dictionary."""
         return self.live_context
 
     def update_contetx(self, key: str, value: Any) -> None:
+        """Store a value in the plugin live context under the provided key."""
         self.live_context[key] = value
 
 
 def decription(text: str) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    """Attach a natural-language description to a plugin action method."""
+
     def wrapper(func: Callable[..., Any]) -> Callable[..., Any]:
-        func._desc = text  
+        """Store the description metadata on the decorated function."""
+        func._desc = text
         return func
 
     return wrapper

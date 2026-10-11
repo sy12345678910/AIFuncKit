@@ -2,8 +2,6 @@
 
 [Python Version](https://python.org)
 [License](LICENSE)
-[Framework]()
-[Backend]
 
 **IntentC** is an ultra-lightweight, high-performance asynchronous micro-framework designed to compile human language intentions into deterministic, production-ready execution flows. 
 

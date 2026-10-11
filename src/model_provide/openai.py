@@ -14,11 +14,12 @@ async def generate_with_openai(
     api_key: str,
     format: Any,
 ) -> str:
-    client = AsyncOpenAI(api_key=api_key)
-    schema = format.model_json_schema() if hasattr(format, "model_json_schema") else format
+    """Generate a structured completion using the OpenAI chat API."""
+    client: AsyncOpenAI = AsyncOpenAI(api_key=api_key)
+    schema: Any = format.model_json_schema() if hasattr(format, "model_json_schema") else format
 
     try:
-        response = await client.chat.completions.create(
+        response: Any = await client.chat.completions.create(
             model=model,
             messages=[
                 {"role": "system", "content": prompt},
@@ -29,9 +30,9 @@ async def generate_with_openai(
                 "schema": schema,
             },
         )
-        content = response.choices[0].message.content
+        content: str = str(response.choices[0].message.content or "")
         logger.info("OpenAI generation succeeded for model '%s'", model)
-        return str(content or "")
+        return content
     except Exception as exc:
         logger.error("OpenAI API call failed for model '%s': %s", model, exc, exc_info=True)
         raise

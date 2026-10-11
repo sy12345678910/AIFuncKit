@@ -6,13 +6,14 @@ import queue
 from logging.handlers import QueueHandler, QueueListener
 from typing import Optional
 
-LOGGER_NAME = "swift_core_ai"
-logger = logging.getLogger(LOGGER_NAME)
+LOGGER_NAME: str = "swift_core_ai"
+logger: logging.Logger = logging.getLogger(LOGGER_NAME)
 
 _listener: Optional[QueueListener] = None
 
 
 def _stop_listener() -> None:
+    """Stop the queued logging listener if it is active."""
     global _listener
     if _listener is not None:
         _listener.stop()
@@ -23,20 +24,20 @@ def configure_logging(
     verbose: bool = True,
     log_to_file: Optional[str] = "swift_core_ai.log",
 ) -> None:
-    """Attach non-blocking (queued) console and optional file handlers to the library logger."""
+    """Attach a queued console handler and optional file handler to the runtime logger."""
     global _listener
 
     _stop_listener()
 
-    root_logger = logging.getLogger(LOGGER_NAME)
+    root_logger: logging.Logger = logging.getLogger(LOGGER_NAME)
     root_logger.handlers.clear()
     root_logger.propagate = False
 
-    console_formatter = logging.Formatter(
+    console_formatter: logging.Formatter = logging.Formatter(
         fmt="%(asctime)s | %(levelname)-8s | %(module)s | %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
-    file_formatter = logging.Formatter(
+    file_formatter: logging.Formatter = logging.Formatter(
         fmt=(
             "%(asctime)s | %(levelname)-8s | %(name)s | %(module)s | "
             "%(funcName)s:%(lineno)d | %(message)s"
@@ -46,14 +47,14 @@ def configure_logging(
 
     handlers: list[logging.Handler] = []
 
-    console_handler = logging.StreamHandler()
+    console_handler: logging.StreamHandler = logging.StreamHandler()
     console_handler.setFormatter(console_formatter)
     console_handler.setLevel(logging.INFO if verbose else logging.CRITICAL)
     handlers.append(console_handler)
 
     if log_to_file is not None:
         try:
-            file_handler = logging.FileHandler(log_to_file, encoding="utf-8")
+            file_handler: logging.FileHandler = logging.FileHandler(log_to_file, encoding="utf-8")
             file_handler.setFormatter(file_formatter)
             file_handler.setLevel(logging.DEBUG)
             handlers.append(file_handler)
@@ -70,7 +71,7 @@ def configure_logging(
         root_logger.setLevel(logging.CRITICAL)
 
     log_queue: queue.Queue[logging.LogRecord] = queue.Queue(-1)
-    queue_handler = QueueHandler(log_queue)
+    queue_handler: QueueHandler = QueueHandler(log_queue)
     queue_handler.setLevel(logging.DEBUG)
     root_logger.addHandler(queue_handler)
 

@@ -1,10 +1,13 @@
 # src/model_provide/model_router.py
 from __future__ import annotations
+
 import json
 from pathlib import Path
 from typing import Any, Optional
+
 from config import TaskList
 from log_config import logger
+
 
 async def get_data_generated_by_model(
     prompt: str,
@@ -15,6 +18,7 @@ async def get_data_generated_by_model(
     api_key: Optional[str] = None,
     context_window: int = 4096,
 ) -> Any:
+    """Route provider-specific generation requests and validate their structured output."""
     logger.info("Requesting generation from provider '%s' (model='%s')", provider, model)
     response: Any = None
 
@@ -22,6 +26,7 @@ async def get_data_generated_by_model(
         match provider:
             case "hf" | "hugging_face":
                 from model_provide import hf as hf_provider
+
                 response = await hf_provider.generate_with_hf_on_cloud(
                     prompt=prompt,
                     user_prompt=user_prompt,
@@ -31,6 +36,7 @@ async def get_data_generated_by_model(
                 )
             case "openai":
                 from model_provide import openai as openai_provider
+
                 response = await openai_provider.generate_with_openai(
                     prompt=prompt,
                     user_prompt=user_prompt,
@@ -40,7 +46,8 @@ async def get_data_generated_by_model(
                 )
             case "ollama":
                 from model_provide import ollama as ollama_provider
-                compiled_format = format
+
+                compiled_format: Any = format
                 if hasattr(format, "model_json_schema"):
                     compiled_format = format.model_json_schema()
 
@@ -49,10 +56,11 @@ async def get_data_generated_by_model(
                     user_prompt=user_prompt,
                     model=model,
                     context_window=context_window,
-                    format=compiled_format,  
+                    format=compiled_format,
                 )
             case "llama_cpp":
                 from model_provide import llama_cpp as llama_cpp_provider
+
                 try:
                     response = await llama_cpp_provider.generate_with_llama_cpp(
                         prompt=prompt,
@@ -74,7 +82,9 @@ async def get_data_generated_by_model(
         if isinstance(response, (dict, list)):
             return response
         try:
-            cleaned_response = str(response).strip().removeprefix("```json").removesuffix("```").strip()
+            cleaned_response: str = (
+                str(response).strip().removeprefix("```json").removesuffix("```").strip()
+            )
             return json.loads(cleaned_response)
         except (json.JSONDecodeError, TypeError, AttributeError) as exc:
             logger.error("LLM returned invalid JSON: %s. Raw: %s", exc, response)
@@ -86,12 +96,17 @@ async def get_data_generated_by_model(
                 logger.info("LLM response validated as %s", getattr(format, "__name__", format))
                 return response
             cleaned_response = str(response).strip().removeprefix("```json").removesuffix("```").strip()
-            data = json.loads(cleaned_response)
-            validated = format.model_validate(data)
+            data: Any = json.loads(cleaned_response)
+            validated: Any = format.model_validate(data)
             logger.info("LLM response validated as %s", getattr(format, "__name__", format))
             return validated
         except Exception as exc:
-            logger.error("LLM returned invalid structure for %s: %s. Raw: %s", getattr(format, "__name__", format), exc, response)
+            logger.error(
+                "LLM returned invalid structure for %s: %s. Raw: %s",
+                getattr(format, "__name__", format),
+                exc,
+                response,
+            )
             raise RuntimeError(f"LLM returned invalid structure for TaskList: {exc}. Raw: {response}") from exc
 
     return response
