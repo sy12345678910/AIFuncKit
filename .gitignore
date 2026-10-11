@@ -1,0 +1,62 @@
+# === Python System Trash ===
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# === Virtual Environments ===
+.venv/
+venv/
+ENV/
+env/
+
+# === Testing & Coverage ===
+.pytest_cache/
+.testmondata
+.coverage
+*.lcov
+htmlcov/
+
+# === Local Databases & RAG Memory (CRITICAL) ===
+*.db
+*.db-wal
+*.db-shm
+test_memory.db
+benchmark_rag.db
+heavy_benchmark_rag.db
+runtime_rag.db
+
+# === Application Execution Logs ===
+*.log
+app_execution.log
+test_execution.log
+test_run.log
+
+# === IDE & OS Hidden Files ===
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+.DS_Store
+Thumbs.db
