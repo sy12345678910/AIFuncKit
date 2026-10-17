@@ -11,5 +11,5 @@ class MetadataForLLM(BaseModel):
     context_block: str
     
 class PipelineNode(BaseModel):
-    task: str
+    type: str
     description: Dict[str, Any]    

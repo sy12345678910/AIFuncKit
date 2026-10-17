@@ -22,7 +22,7 @@ class AIEngine:
         emb_model: str = "paraphrase-multilingual-MiniLM-L12-v2",
         routing_model: str = "vector",
         verbose: bool = True,
-        log_to_file: Optional[str] = "swift_core_ai.log",
+        log_to_file: Optional[str] = "aifunckit.log",
     ) -> None:
         """Initialize the engine, logging, and orchestrator with default runtime settings."""
         configure_logging(verbose=verbose, log_to_file=log_to_file)

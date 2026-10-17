@@ -5,27 +5,58 @@ import numpy as np
 from numpy.typing import NDArray
 
 from log_config import logger
-from src.schemas.orchestrator_schemas import PipelineNode
+from schemas.orchestrator_schemas import PipelineNode, LLMConfig, MetadataForLLM
+from schemas.memory_schemas import RecordData
 from memory.rag import AIRAGMemoryManager
+from memory.embedding import EmbeddingService
 from orchestrator.break_prompt import break_prompt_to_tasks
 from orchestrator.extract_args import extract_args
 from orchestrator.select_method import referal_ai_to_correct_plugin
 
 class Pipeline:
-    def __init__(self, db_path: str):
+    def __init__(
+            self,
+            cached_metadata: list[dict[str, Any]],
+            provider: str = "ollama",
+            model_name: str = "gemma4:e4b",
+            context_window: int = 3072,
+            db_path: str = "aie_runtime.db",
+            emb_model: Any = "sentence_transformers/paraphrase-multilingual-MiniLM-L12-v2",
+            routing_model: str = "vector",
+        ) -> None:
         self.runtime_memory = AIRAGMemoryManager(db_path=db_path)
+        self.llm_config = LLMConfig(
+            provider=provider,
+            model_name=model_name,
+            context_window=context_window,
+        )
+        self.cached_metadata = cached_metadata
+        self.embedding_service = EmbeddingService(
+            emb_model=emb_model
+        )
+        self.routing_model = routing_model
         
     async def run_pipeline(
         self,
         user_prompt: str,
-        current_context: Optional[dict[str, Any]] = None,
+        current_context: Optional[dict[str, Any]] = {},
     ) -> list[dict[str, Any]]:
         """Build and execute a full task pipeline for a user request."""
         res: list[dict[str, Any]] = []
-        system_context: dict[str, Any] = current_context if current_context is not None else {}
+        system_context: dict[str, Any] = current_context 
         tasks: list[Any]
         prompt_emb: NDArray[np.float32]
-        tasks, prompt_emb = await break_prompt_to_tasks(user_prompt, system_context)
+        meta_for_llm = MetadataForLLM(
+            cached_metadata=self.cached_metadata,
+            context_block=system_context
+        )
+        tasks, prompt_emb = await break_prompt_to_tasks(
+            user_prompt=user_prompt, 
+            llm_config=self.llm_config,
+            metadata_for_llm=meta_for_llm,
+            memory=self.runtime_memory,
+            embedding=self.embedding_service,
+        )
         if not tasks:
             logger.warning("Pipeline aborted: no tasks produced from prompt")
             return []
@@ -35,8 +66,15 @@ class Pipeline:
 
         decomposition_result: dict[str, list[str]] = {"tasks": [str(task) for task in tasks]}
         try:
+            record_data = RecordData(
+                layer="decomposition",
+                user_prompt=user_prompt, 
+                context_dict= {},
+                args=decomposition_result,
+                raw_vector=prompt_emb,
+            ) 
             await self.runtime_memory.add_record(
-                "decomposition", user_prompt, {}, decomposition_result, prompt_emb
+                record_data=record_data
             )
         except Exception as exc:
             logger.error("Failed to persist decomposition memory: %s", exc, exc_info=True)
@@ -58,7 +96,12 @@ class Pipeline:
             else:
                 task_str: str = str(node)
                 try:
-                    meta: dict[str, Any] = await referal_ai_to_correct_plugin(task_str)
+                    meta: dict[str, Any] = await referal_ai_to_correct_plugin(
+                        task_str,
+                        self.cached_metadata,
+                        self.routing_model,
+                        self.embedding_service,
+                    )
                     is_blocking: bool = meta.get("execution_type") == "blocking"
 
                     if not is_blocking:
@@ -103,7 +146,7 @@ class Pipeline:
         plugin_context: dict[str, Any] = system_context.get(plugin_name, {})
         expected_schema: dict[str, Any] = plugin_meta.get("args", {})
 
-        task_emb: NDArray[np.float32] = await self._encode_text(task)
+        task_emb: NDArray[np.float32] = await self.embedding_service._encode_text(task)
         try:
             memory_example: Optional[tuple[str, str, str]] = await self.runtime_memory.search_relevant_example(
             "extraction", task_emb
@@ -113,7 +156,7 @@ class Pipeline:
             memory_example = None
 
         needable_args: dict[str, Any] = await extract_args(
-            task, expected_schema, plugin_context, memory_example
+            task, expected_schema, plugin_context, self.llm_config, memory_example
         )
 
         func_data: dict[str, Any] = {
@@ -153,7 +196,7 @@ class Pipeline:
         ]
         workers_results: list[Any] = await asyncio.gather(*task_workers, return_exceptions=True)
 
-        for (task, _meta), result in zip(nodes, workers_results):
+        for (task, _), result in zip(nodes, workers_results):
             if isinstance(result, Exception):
                 logger.error(
                     "Parallel plugin task '%s' failed: %s",
@@ -168,8 +211,15 @@ class Pipeline:
             func_data, task_ctx, t_emb = result
             res.append(func_data)
             try:
+                record_data = RecordData(
+                    layer="extraction",
+                    user_prompt=task,
+                    context_dict=task_ctx,
+                    args=func_data,
+                    raw_vector=t_emb
+                )
                 await self.runtime_memory.add_record(
-                    "extraction", task, task_ctx, func_data["args"], t_emb
+                    record_data=record_data
                 )
             except Exception as exc:
                 logger.error(
@@ -197,7 +247,7 @@ class Pipeline:
                 func_data, task_ctx, t_emb = result
                 res.append(func_data)
                 await self.runtime_memory.add_record(
-                    "extraction", task, task_ctx, func_data["args"], t_emb
+                    * "extraction", task, task_ctx, func_data["args"], t_emb
                 )
             except Exception as exc:
                 logger.error(
