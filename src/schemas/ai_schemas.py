@@ -15,7 +15,7 @@ class ConditionalTask(BaseModel):
     """A conditional task block that selects one of two task branches."""
 
     condition_variable: str = Field(
-        description="The context key to check, e.g., 'email.has_unread'"
+        description="The context key to check"
     )
     if_true: List[str] = Field(description="List of tasks to execute if condition is true")
     if_false: List[str] = Field(description="List of tasks to execute if condition is false")

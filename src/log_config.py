@@ -6,7 +6,7 @@ import queue
 from logging.handlers import QueueHandler, QueueListener
 from typing import Optional
 
-LOGGER_NAME: str = "swift_core_ai"
+LOGGER_NAME: str = "ai-func-kit"
 logger: logging.Logger = logging.getLogger(LOGGER_NAME)
 
 _listener: Optional[QueueListener] = None
@@ -22,7 +22,7 @@ def _stop_listener() -> None:
 
 def configure_logging(
     verbose: bool = True,
-    log_to_file: Optional[str] = "swift_core_ai.log",
+    log_to_file: Optional[str] = "ai-func-kit.log",
 ) -> None:
     """Attach a queued console handler and optional file handler to the runtime logger."""
     global _listener

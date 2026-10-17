@@ -31,3 +31,4 @@ class RoutingModeDoesNotExist(__AIBaseException):
     def __init__(self, message: str) -> None:
         """Create a routing configuration error with the provided message."""
         super().__init__(message)
+

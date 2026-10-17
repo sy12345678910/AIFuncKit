@@ -4,7 +4,7 @@ import inspect
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
-from exceptions import PluginForDeleteNotFoundError
+from src.exceptions.exceptions import PluginForDeleteNotFoundError
 from log_config import configure_logging, logger
 from orchestrator import AIOrchestrator
 from sdk import BasePlugin

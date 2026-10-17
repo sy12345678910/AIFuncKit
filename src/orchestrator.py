@@ -9,15 +9,21 @@ import numpy as np
 import ollama
 from numpy.typing import NDArray
 
-from config import TaskList
-from exceptions import PluginNotFoundError, RoutingModeDoesNotExist
+from src.schemas.ai_schemas import TaskList
+from src.exceptions.exceptions import PluginNotFoundError, RoutingModeDoesNotExist
 from log_config import logger
-from memory import AIRAGMemory
+from src.memory.rag import AIRAGMemory
 from model_provide.model_router import get_data_generated_by_model
+
+try:
+    from sentence_transformers import SentenceTransformer
+    import laya
+except ImportError:
+    logger.warning("You didn't add dependencies blm")
 
 PipelineNode = tuple[str, dict[str, Any]]
 
-
+# 1
 def _as_float32_vector(vec: Any) -> NDArray[np.float32]:
     """Normalize vector-like objects into a flat float32 NumPy array."""
     if hasattr(vec, "detach"):
@@ -35,7 +41,7 @@ def _metadata_action_name(meta: dict[str, Any]) -> str:
         return stored.__name__
     return str(stored or "")
 
-
+# 2
 class AIOrchestrator:
     """Plan prompts, choose the right plugin, and execute actions against system context."""
 
@@ -46,7 +52,7 @@ class AIOrchestrator:
         model_name: str = "gemma4:e4b",
         context_window: int = 3072,
         db_path: str = "aie_runtime.db",
-        emb_model: Any = "paraphrase-multilingual-MiniLM-L12-v2",
+        emb_model: Any = "",
         routing_model: str = "vector",
     ) -> None:
         """Initialize the orchestrator, memory store, provider client, and route metadata."""
@@ -75,8 +81,6 @@ class AIOrchestrator:
 
         model_name: str = str(self.emb_model)
         try:
-            from sentence_transformers import SentenceTransformer
-
             self.emb_model = await asyncio.to_thread(SentenceTransformer, model_name)
             logger.info("Loaded embedding model '%s' via sentence-transformers", model_name)
         except Exception as exc:
@@ -116,14 +120,6 @@ class AIOrchestrator:
                     raise
             logger.error("Native Ollama embedding generation failed: %s", exc, exc_info=True)
             raise
-
-    def _normalize_vector(self, vec: np.ndarray) -> NDArray[np.float32]:
-        """L2-normalize the vector and cast it to float32 for semantic matching."""
-        array: NDArray[np.float32] = _as_float32_vector(vec)
-        norm: float = float(np.linalg.norm(array))
-        if norm > 1e-10:
-            return (array / norm).astype(np.float32)
-        return array.astype(np.float32)
 
     async def break_prompt_to_tasks(
         self,
@@ -337,8 +333,6 @@ class AIOrchestrator:
     async def __blm_routing(self, task: str) -> dict[str, Any]:
         """Route using a model-specific router when the optional laya dependency exists."""
         try:
-            import laya
-
             self.agent = laya.Router(preload=True)
             options: dict[str, dict[str, Any]] = {
                 m["action_name"]: {
@@ -364,9 +358,6 @@ class AIOrchestrator:
             raise PluginNotFoundError(
                 f"Selected method '{selected_method_name}' not found in metadata"
             )
-        except ImportError:
-            logger.error("blm regime doesn't work without Laya. Please, install Laya")
-            raise ImportError("blm regime doesn't work without Laya. Please, install Laya")
         except Exception as exc:
             logger.error("BLM routing failed: %s", exc, exc_info=True)
             raise
