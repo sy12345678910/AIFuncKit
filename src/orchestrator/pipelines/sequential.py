@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 from typing import Any
 
 from log_config import logger
@@ -16,14 +17,16 @@ class SequentialPipeline(BasePipeline):
             if self._is_conditional_node(node):
                 from orchestrator.pipelines.conditional import ConditionalPipeline
 
-                branch_context_tasks = context.decomposed_tasks
-                context.decomposed_tasks = [node]
+                branch_context = copy.copy(context)
+                branch_context.decomposed_tasks = [node]
+                
                 await ConditionalPipeline(
                     routing=self.routing,
                     extraction=self.extraction,
                     execution=self.execution,
-                ).execute(context)
-                context.decomposed_tasks = branch_context_tasks
+                ).execute(branch_context)
+                
+                context.execution_results = branch_context.execution_results
                 continue
 
             try:

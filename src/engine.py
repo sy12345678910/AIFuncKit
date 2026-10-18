@@ -6,7 +6,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from src.exceptions.exceptions import PluginForDeleteNotFoundError
 from log_config import configure_logging, logger
-from orchestrator import AIOrchestrator
+from orchestrator.pipeline import MasterOrchestrationEngine
 from sdk import BasePlugin
 
 
@@ -33,7 +33,7 @@ class AIEngine:
         self.actions: dict[str, Callable[..., Any]] = {}
         self.plugins: dict[str, BasePlugin] = {}
 
-        self.orchestrator: AIOrchestrator = AIOrchestrator(
+        self.orchestrator: MasterOrchestrationEngine = MasterOrchestrationEngine(
             cached_metadata=self.cached_metadata,
             provider=provider,
             model_name=ai_model,
