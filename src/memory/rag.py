@@ -25,6 +25,9 @@ class AIRAGMemoryManager:
             ids=[r.id for r in records],
             vectors=[r.vector for r in records]
         )
+
+    async def init_and_load_cache(self) -> None:
+        await self.initialize()
         
     async def add_record(self, record_data: RecordData) -> None:
         inserted_id = await self.repository.add_record(record_data=record_data)

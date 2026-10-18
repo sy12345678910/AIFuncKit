@@ -65,10 +65,7 @@ async def __vector_routing(task: str, cached_metadata: list, emb_service: Embedd
         return best_meta, best_index, max_similarity
 
     try:
-        if len(cached_metadata) > 100:
-            best_meta, best_index, max_similarity = _calculate_best_match()
-        else:
-            best_meta, best_index, max_similarity = _calculate_best_match()
+        best_meta, best_index, max_similarity = _calculate_best_match()
     except Exception as exc:
         logger.error("Vector routing failed: %s", exc, exc_info=True)
         return cached_metadata[0]

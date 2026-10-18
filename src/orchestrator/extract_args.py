@@ -16,7 +16,10 @@ async def extract_args(
         """Infer argument values for a plugin method from the active runtime context."""
         memory_prompt_block: str = ""
         if memory_example:
-            past_prompt, past_context, past_json = memory_example
+            past_prompt = memory_example.user_prompt
+            past_context = memory_example.context_snapshot
+            past_json = memory_example.extracted_json
+
             memory_prompt_block = (
                 "PAST SUCCESSFUL EXPERIENCE:\n"
                 f"- System state: {past_context}\n"

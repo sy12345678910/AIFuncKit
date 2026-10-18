@@ -18,6 +18,8 @@ class ActiveVectors(BaseModel):
         return np.frombuffer(self.embedding, dtype=np.float32)
     
 class RecordData(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     layer: str
     user_prompt: str
     context_dict: Dict

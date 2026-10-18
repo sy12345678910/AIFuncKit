@@ -1,5 +1,5 @@
 from typing import List, Dict, Any
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 class LLMConfig(BaseModel):
     provider: str = "ollama"
@@ -7,8 +7,10 @@ class LLMConfig(BaseModel):
     context_window: int = 3072
 
 class MetadataForLLM(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     cached_metadata: List
-    context_block: str
+    context_block: Any = ""
     
 class PipelineNode(BaseModel):
     type: str
