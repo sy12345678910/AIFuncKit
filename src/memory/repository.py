@@ -56,7 +56,7 @@ class SQLiteRepository(BaseRepository):
             async with self.db.execute(
                 "SELECT id, layer, embedding FROM memory_history WHERE is_archived = 0"
             ) as cursor:
-                rows = cursor.fetchall()
+                rows = await cursor.fetchall()
                 return [ActiveVectors.model_validate(dict(row)) for row in rows]
         except aiosqlite.Error as exc:
             logger.error("Failed to fetch vectors from SQLite: %s", exc, exc_info=True)

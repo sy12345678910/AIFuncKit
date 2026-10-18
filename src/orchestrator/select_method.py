@@ -19,7 +19,7 @@ async def referal_ai_to_correct_plugin(task: str, cached_metadata: list, routing
         case "blm":
             return await __blm_routing(task=task_lower, cached_metadata=cached_metadata)
         case "text":
-            return __text_routing(task=task_lower)
+            return __text_routing(task=task_lower, cached_metadata=cached_metadata)
         case "vector":
             return await __vector_routing(task=task_lower, cached_metadata=cached_metadata, emb_service=emb_service)
         case _:
@@ -43,7 +43,7 @@ def __text_routing(task: str, cached_metadata: list) -> dict[str, Any]:
 async def __vector_routing(task: str, cached_metadata: list, emb_service: EmbeddingService) -> dict[str, Any]:
     """Match tasks by embedding similarity between the task and action descriptions."""
     task_vector: NDArray[np.float32] = normalize_vector(await emb_service._encode_text(task))
-    await ensure_description_embeddings()
+    await ensure_description_embeddings(cached_metadata=cached_metadata, emb_service=emb_service)
 
     def _calculate_best_match() -> tuple[dict[str, Any], int, float]:
         """Compute the best metadata match in a single pass over the cache."""
@@ -66,7 +66,7 @@ async def __vector_routing(task: str, cached_metadata: list, emb_service: Embedd
 
     try:
         if len(cached_metadata) > 100:
-            best_meta, best_index, max_similarity = _calculate_best_match
+            best_meta, best_index, max_similarity = _calculate_best_match()
         else:
             best_meta, best_index, max_similarity = _calculate_best_match()
     except Exception as exc:
@@ -98,7 +98,7 @@ async def ensure_description_embeddings(cached_metadata: list, emb_service: Embe
                 exc,
             )
             
-async def __blm_routing(self, task: str, cached_metadata) -> dict[str, Any]:
+async def __blm_routing(task: str, cached_metadata) -> dict[str, Any]:
     """Route using a model-specific router when the optional laya dependency exists."""
     try:
         import laya
@@ -120,7 +120,7 @@ async def __blm_routing(self, task: str, cached_metadata) -> dict[str, Any]:
         answer: Any = await asyncio.to_thread(agent.predict, task, question)
         selected_method_name: Any = answer.get("answers", {}).get("method", {}).get("choice")
 
-        for meta in self.cached_metadata:
+        for meta in cached_metadata:
             if meta["action_name"] == selected_method_name:
                 logger.info("BLM routing selected action '%s'", selected_method_name)
                 return meta

@@ -10,7 +10,7 @@ class EmbeddingService:
         
     def _encode_text(self, text: str) -> NDArray[np.float32]:
         """Convert a text string into a normalized embedding vector."""
-        self.ensure_embedding_model(self)
+        self.ensure_embedding_model()
 
         try:
             embidding_generator = self._model.embed([text])

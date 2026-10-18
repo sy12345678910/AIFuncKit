@@ -1,5 +1,5 @@
 from typing import Dict
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 import numpy as np
 from numpy.typing import NDArray
 
