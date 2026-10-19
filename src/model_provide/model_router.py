@@ -1,4 +1,3 @@
-# src/model_provide/model_router.py
 from __future__ import annotations
 
 import json
@@ -72,6 +71,26 @@ async def get_data_generated_by_model(
                 except ImportError:
                     logger.error("llama_cpp isn't installed. Please, install llama_cpp_python")
                     raise ImportError("llama_cpp isn't installed. Please, install llama_cpp_python")
+            case "anthropic":
+                from model_provide.anthropic import generate_with_anthropic
+                response = await generate_with_anthropic(
+                    prompt=prompt,
+                    user_prompt=user_prompt,
+                    model=model,
+                    context_window=context_window,
+                    api_key=api_key or "",
+                    format=format,
+                )
+            case "gemini"|"google gemini":
+                from model_provide.google_gemini import generate_with_gemini
+                response = await generate_with_gemini(
+                    prompt=prompt,
+                    user_prompt=user_prompt,
+                    model=model,
+                    context_window=context_window,
+                    api_key=api_key or "",
+                    format=format,
+                )   
             case _:
                 raise ValueError(f"Unknown provider: {provider}")
     except Exception as exc:
