@@ -110,13 +110,13 @@ class SQLiteRepository(BaseRepository):
                 row = await cursor.fetchone()
                 if not row:
                     return None
-                
+
                 return MemoryRecord(
                     user_prompt=str(row[0]),
                     context_snapshot=json.loads(row[1]),
-                    extracted_json=json.loads(row[2])
+                    extracted_json=json.loads(row[2]),
                 )
-        except aiosqlite.Error as exc:
+        except (aiosqlite.Error, json.JSONDecodeError, TypeError) as exc:
             logger.error("Failed to fetch RAG record id=%s: %s", record_id, exc, exc_info=True)
             return None
 

@@ -1,13 +1,13 @@
-from typing import Dict
+from typing import Any, Dict
 from pydantic import BaseModel, ConfigDict
 import numpy as np
 from numpy.typing import NDArray
 
 class MemoryRecord(BaseModel):
     user_prompt: str
-    context_snapshot: str
-    extracted_json: str
-    
+    context_snapshot: Any
+    extracted_json: Any
+
 class ActiveVectors(BaseModel):
     id: int
     layer: str

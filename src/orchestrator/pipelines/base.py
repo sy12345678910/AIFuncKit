@@ -18,6 +18,8 @@ from schemas.memory_schemas import MemoryRecord, RecordData
 class BasePipeline(ABC):
     """Abstract execution topology that operates on a shared pipeline context."""
 
+    pipeline_type: str = "base"
+
     def __init__(
         self,
         routing: Optional[PluginRoutingService] = None,
@@ -27,10 +29,38 @@ class BasePipeline(ABC):
         self.routing = routing or PluginRoutingService()
         self.extraction = extraction or ArgumentExtractionService()
         self.execution = execution or ActionExecutionService()
+        self.strategy: Any = None
 
     @abstractmethod
     async def execute(self, context: PipelineContext) -> None:
         """Run this topology against the provided context."""
+
+    async def _execute_task_node(
+        self,
+        task: Any,
+        context: PipelineContext,
+        plugin_meta: Optional[dict[str, Any]] = None,
+    ) -> Optional[dict[str, Any]]:
+        """Route, extract, invoke, and persist a single task in the current pipeline."""
+        result = await self.process_task(task, context, plugin_meta=plugin_meta)
+        if result is None:
+            return None
+
+        func_data, task_ctx, task_emb = result
+        try:
+            executed = await self.execution.execute(func_data)
+            func_data["result"] = executed
+            context.execution_results.append(func_data)
+            await self.persist_extraction(context, task, task_ctx, func_data, task_emb)
+            return func_data
+        except Exception as exc:
+            logger.error(
+                "Pipeline task '%s' execution failed: %s",
+                task,
+                exc,
+                exc_info=True,
+            )
+            return None
 
     async def process_task(
         self,
@@ -89,6 +119,7 @@ class BasePipeline(ABC):
                 exc,
                 exc_info=True,
             )
+            
             return None
 
     async def persist_extraction(
@@ -119,3 +150,12 @@ class BasePipeline(ABC):
 
     def _is_conditional_node(self, node: Any) -> bool:
         return isinstance(node, dict) and "condition_variable" in node
+
+    def _is_loop_node(self, node: Any) -> bool:
+        return isinstance(node, dict) and (
+            "loop_variable" in node or "iterations" in node or "repetitions" in node
+        )
+
+    def _is_timeout_node(self, node: Any) -> bool:
+        return isinstance(node, dict) and ("timeout" in node or "timeout_seconds" in node)
+

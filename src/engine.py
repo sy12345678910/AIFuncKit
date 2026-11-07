@@ -23,6 +23,7 @@ class AIEngine:
         routing_model: str = "vector",
         verbose: bool = True,
         log_to_file: Optional[str] = "aifunckit.log",
+        async_loop: bool = False
     ) -> None:
         """Initialize the engine, logging, and orchestrator with default runtime settings."""
         configure_logging(verbose=verbose, log_to_file=log_to_file)
@@ -41,6 +42,7 @@ class AIEngine:
             db_path=str(db_path),
             emb_model=emb_model,
             routing_model=routing_model,
+            async_loop=async_loop
         )
         logger.info(
             "AIEngine created (provider=%s, model=%s, routing=%s)",

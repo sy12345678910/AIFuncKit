@@ -5,27 +5,20 @@ from typing import Any
 from log_config import logger
 from schemas.pipeline_context import PipelineContext
 from orchestrator.pipelines.base import BasePipeline
-from orchestrator.pipelines.sequential import SequentialPipeline
+from orchestrator.pipelines.strategies.conditional import ConditionalExecutionStrategy
 
 
 class ConditionalPipeline(BasePipeline):
     """Route execution into if_true / if_false sequential branches from live state."""
 
+    pipeline_type = "conditional"
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.strategy = ConditionalExecutionStrategy(self)
+
     async def execute(self, context: PipelineContext) -> None:
-        remaining: list[Any] = []
-        for node in list(context.decomposed_tasks):
-            if not self._is_conditional_node(node):
-                remaining.append(node)
-                continue
-
-            if remaining:
-                await self._run_sequential_branch(remaining, context)
-                remaining = []
-
-            await self._execute_conditional_node(node, context)
-
-        if remaining:
-            await self._run_sequential_branch(remaining, context)
+        await self.strategy.execute(context, list(context.decomposed_tasks))
 
     async def _execute_conditional_node(
         self,
@@ -57,6 +50,8 @@ class ConditionalPipeline(BasePipeline):
         tasks: list[Any],
         context: PipelineContext,
     ) -> None:
+        from orchestrator.pipelines.sequential import SequentialPipeline
+
         original_tasks = context.decomposed_tasks
         context.decomposed_tasks = list(tasks)
         await SequentialPipeline(

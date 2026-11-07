@@ -14,4 +14,8 @@ class MetadataForLLM(BaseModel):
     
 class PipelineNode(BaseModel):
     type: str
-    description: Dict[str, Any]    
+    pipeline_type: str = "sequential"
+    description: Dict[str, Any] = {}
+
+class ParamsForExecution(BaseModel):
+    async_loop: bool = False

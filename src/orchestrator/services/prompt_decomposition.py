@@ -46,8 +46,7 @@ class PromptDecompositionService:
             "'otherwise', 'when... then...'), you MUST construct a conditional block "
             "object using the JSON schema with fields 'condition_variable', 'if_true', "
             "and 'if_false'. The 'condition_variable' MUST reflect a state variable from "
-            "the AVAILABLE SYSTEM CAPABILITIES in strict format 'plugin_name.variable_name' "
-            "(e.g., 'email.has_unread').\n"
+            "the AVAILABLE SYSTEM CAPABILITIES in strict format 'plugin_name.variable_name'\n"
             "5. Return the result ONLY in accordance with the provided JSON schema."
         )
 

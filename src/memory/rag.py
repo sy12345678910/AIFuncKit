@@ -47,4 +47,7 @@ class AIRAGMemoryManager:
     
     async def close(self) -> None:
         return await self.repository.close()
+
+
+AIRAGMemory = AIRAGMemoryManager
         

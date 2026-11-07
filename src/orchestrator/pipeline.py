@@ -16,7 +16,7 @@ from orchestrator.services.plugin_routing import PluginRoutingService
 from orchestrator.services.prompt_decomposition import PromptDecompositionService
 from orchestrator.topology_resolver import TopologyResolver
 from schemas.memory_schemas import RecordData
-from schemas.orchestrator_schemas import LLMConfig, MetadataForLLM
+from schemas.orchestrator_schemas import LLMConfig, MetadataForLLM, ParamsForExecution
 
 
 class MasterOrchestrationEngine:
@@ -31,6 +31,7 @@ class MasterOrchestrationEngine:
         db_path: str = "aie_runtime.db",
         emb_model: Any = "sentence_transformers/paraphrase-multilingual-MiniLM-L12-v2",
         routing_model: str = "vector",
+        async_loop: bool = False
     ) -> None:
         self.runtime_memory = AIRAGMemoryManager(db_path=db_path)
         self.llm_config = LLMConfig(
@@ -78,6 +79,7 @@ class MasterOrchestrationEngine:
             memory=self.runtime_memory,
             embedding=self.embedding_service,
             environment_state=system_context,
+            params_for_execution=ParamsForExecution(async_loop=False),
         )
 
     async def run_pipeline(

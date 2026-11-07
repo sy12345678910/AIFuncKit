@@ -51,7 +51,7 @@ Bug-Tracker = "https://github.com/sy12345678910/IntentC/issues"
 path = "src/__init__.py"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/intent_c"]
+packages = ["src"]
 
 [tool.black]
 line-length = 88
@@ -61,4 +61,5 @@ target-version = ['py312']
 minversion = "6.0"
 addopts = "-ra -q"
 testpaths = ["tests"]
+pythonpath = [".", "src"]
 

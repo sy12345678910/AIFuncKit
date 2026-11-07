@@ -20,10 +20,17 @@ class ConditionalTask(BaseModel):
     if_true: List[str] = Field(description="List of tasks to execute if condition is true")
     if_false: List[str] = Field(description="List of tasks to execute if condition is false")
 
+class LoopTask(BaseModel):
+    task: str = Field(description="Pure technical task, which must repeat")
+    repetitions: int = Field(description="How many times task should repeat")
+    
+class TimeoutTask(BaseModel):
+    task: str = Field(description="Pure task with timeout")
+    timeout: float = Field(description="Time of timeout")
 
 class TaskList(BaseModel):
     """A validated task list produced by the planner model."""
 
-    tasks: List[Union[str, ConditionalTask]] = Field(
+    tasks: List[Union[str, ConditionalTask, LoopTask, TimeoutTask]] = Field(
         description="Ordered list of execution tasks or conditional blocks"
     )

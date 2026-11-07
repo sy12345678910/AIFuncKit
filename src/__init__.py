@@ -1,18 +1,42 @@
-from engine import AIEngine
-from sdk import BasePlugin, decription, describe
-import exceptions
+from __future__ import annotations
 
-from importlib.metadata import version, PackageNotFoundError
+__version__ = "0.1.0"
+
+from importlib.metadata import PackageNotFoundError, version
 
 try:
-    __version__ = version("your-project-name")
+    __version__ = version("aifunckit")
 except PackageNotFoundError:
-    __version__ = "0.0.0"
+    __version__ = "0.1.0"
 
 __all__ = [
     "AIEngine",
     "describe",
     "decription",
     "BasePlugin",
-    "exceptions"
+    "exceptions",
 ]
+
+
+def __getattr__(name: str):
+    if name == "AIEngine":
+        from .engine import AIEngine
+
+        return AIEngine
+    if name == "BasePlugin":
+        from .sdk import BasePlugin
+
+        return BasePlugin
+    if name == "decription":
+        from .sdk import decription
+
+        return decription
+    if name == "describe":
+        from .sdk import describe
+
+        return describe
+    if name == "exceptions":
+        from . import exceptions
+
+        return exceptions
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

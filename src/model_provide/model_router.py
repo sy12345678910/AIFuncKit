@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any, Optional
 
-from config import TaskList
+from model_provide.config import TaskList
 from log_config import logger
 
 
