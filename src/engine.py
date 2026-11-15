@@ -6,7 +6,9 @@ from typing import Any, Callable, Dict, List, Optional
 
 from src.exceptions.exceptions import PluginForDeleteNotFoundError
 from log_config import configure_logging, logger
+from exceptions.pipeline_exceptions import HumansStopPipelineException
 from orchestrator.pipeline import MasterOrchestrationEngine
+from orchestrator.pipelines.schedule import SchedulerService
 from sdk import BasePlugin
 
 
@@ -17,17 +19,19 @@ class AIEngine:
         self,
         ai_model: str = "gemma4:e4b",
         context_window: int = 4096,
-        db_path: Path | str = Path("aie_runtine"),
+        db_path: Path | str = Path("aifunckit_runtine"),
         provider: str = "ollama",
         emb_model: str = "paraphrase-multilingual-MiniLM-L12-v2",
         routing_model: str = "vector",
-        verbose: bool = True,
+        verbose: Optional[bool] = None,
         log_to_file: Optional[str] = "aifunckit.log",
-        async_loop: bool = False
+        log_level: Optional[str | int] = None,
+        failure_threashold: int = 3
     ) -> None:
         """Initialize the engine, logging, and orchestrator with default runtime settings."""
-        configure_logging(verbose=verbose, log_to_file=log_to_file)
-        self.verbose: bool = verbose
+        configure_logging(verbose=verbose, log_to_file=log_to_file, log_level=log_level)
+        self.verbose: Optional[bool] = verbose
+        self.log_level: Optional[str | int] = log_level
         self.log_to_file: Optional[str] = log_to_file
         self.embidding_model: str = emb_model
         self.cached_metadata: list[dict[str, Any]] = []
@@ -42,8 +46,9 @@ class AIEngine:
             db_path=str(db_path),
             emb_model=emb_model,
             routing_model=routing_model,
-            async_loop=async_loop
+            failure_threashold = failure_threashold
         )
+        self.scheduler: SchedulerService = SchedulerService()
         logger.info(
             "AIEngine created (provider=%s, model=%s, routing=%s)",
             provider,
@@ -160,6 +165,7 @@ class AIEngine:
 
     async def run_engine(self, user_prompt: str) -> List[Dict[str, Any]]:
         """Execute the pipeline for a prompt and return the action results."""
+        self.orchestrator.breaker_circus.check_status()
         logger.info("Engine run started for prompt: %s", user_prompt)
         current_context: dict[str, Any] = self.get_current_global_context()
 
@@ -189,8 +195,10 @@ class AIEngine:
                 continue
 
             try:
-                if inspect.iscoroutinefunction(target_func):
-                    result: Any = await target_func(**args)
+                if "result" in data:
+                    result = data["result"]
+                elif inspect.iscoroutinefunction(target_func):
+                    result = await target_func(**args)
                 else:
                     result = target_func(**args)
 
@@ -206,12 +214,49 @@ class AIEngine:
                 continue
 
         logger.info("Engine run finished with %s result(s)", len(results))
-        return results
+        return results        
+
+    def schedule_task(
+        self,
+        prompt: str,
+        interval_seconds: float,
+        task_id: Optional[str] = None,
+    ) -> str:
+        """Register a recurring task that calls run_engine(prompt) every interval_seconds.
+
+        Returns the task_id that can be used to stop the task later.
+
+        Example::
+
+            engine.schedule_task("check disk usage and log if above 90%", interval_seconds=300)
+        """
+        return self.scheduler.schedule(
+            prompt=prompt,
+            interval_seconds=interval_seconds,
+            run_callback=self.run_engine,
+            task_id=task_id,
+        )
+
+    def unschedule_task(self, task_id: str) -> None:
+        """Stop and remove a scheduled task by its ID."""
+        self.scheduler.stop(task_id)
+
+    def list_scheduled_tasks(self) -> List[Dict[str, Any]]:
+        """Return info snapshots for all currently running scheduled tasks."""
+        return self.scheduler.list_tasks()
 
     async def delete_engine(self) -> None:
         """Release orchestrator resources and clear all engine state."""
         try:
-            if hasattr(self.orchestrator.runtime_memory, "vector_list_cache"):
+            self.scheduler.stop_all()
+
+            if hasattr(self.orchestrator.runtime_memory, "search_engine"):
+                se = self.orchestrator.runtime_memory.search_engine
+                for k in getattr(se, "_ids", {}):
+                    se._ids[k] = []
+                for k in getattr(se, "_matrices", {}):
+                    se._matrices[k] = None
+            elif hasattr(self.orchestrator.runtime_memory, "vector_list_cache"):
                 for layer in self.orchestrator.runtime_memory.vector_list_cache:
                     self.orchestrator.runtime_memory.vector_list_cache[layer] = []
 
@@ -253,3 +298,14 @@ class AIEngine:
         for action_name, func in list(self.actions.items()):
             if hasattr(func, "__self__") and getattr(func.__self__, "plugin_name", None) == plugin_name:
                 del self.actions[action_name]
+    
+    def stop_engine(self, reason: str = "Stopped by user"):
+        """Emergency brake"""
+        logger.warning("Emergancy brake %s", reason)
+        self.orchestrator.breaker_circus.emergency_halt(reason)
+        self.scheduler.stop_all()
+
+    def resume_engine(self):
+        """Resume emergency brake"""
+        self.orchestrator.breaker_circus.reset()
+        logger.info("Engine is repeared and now it's working")

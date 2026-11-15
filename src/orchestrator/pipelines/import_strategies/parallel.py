@@ -5,7 +5,7 @@ from typing import Any, Iterable
 
 from log_config import logger
 from schemas.pipeline_context import PipelineContext
-from orchestrator.pipelines.strategies.base import ExecutionStrategy
+from orchestrator.pipelines.import_strategies.base import ExecutionStrategy
 
 
 class ParallelExecutionStrategy(ExecutionStrategy):

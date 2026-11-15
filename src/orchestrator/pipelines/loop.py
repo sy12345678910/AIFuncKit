@@ -4,7 +4,7 @@ from typing import Any
 
 from schemas.pipeline_context import PipelineContext
 from orchestrator.pipelines.base import BasePipeline
-from orchestrator.pipelines.strategies.loop import LoopExecutionStrategy
+from orchestrator.pipelines.import_strategies.loop import LoopExecutionStrategy
 
 
 class LoopPipeline(BasePipeline):

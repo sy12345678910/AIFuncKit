@@ -16,6 +16,11 @@ from orchestrator.general_methods import maybe_await, metadata_action_name
 class PluginRoutingService:
     """Select the plugin metadata record that best matches a decomposed task."""
 
+    # Minimum cosine similarity required to accept a vector routing match.
+    # Tasks below this threshold are rejected with PluginNotFoundError rather
+    # than blindly falling back to the first registered action.
+    MIN_VECTOR_SIMILARITY: float = 0.25
+
     def __init__(self, routing_model: str = "vector") -> None:
         self.routing_model = routing_model
         self._routes: dict[str, Callable[..., Any]] = {
@@ -96,6 +101,14 @@ class PluginRoutingService:
             metadata_action_name(best_meta),
             max_similarity,
         )
+
+        if max_similarity < self.MIN_VECTOR_SIMILARITY:
+            raise PluginNotFoundError(
+                f"No suitable plugin found for task (best similarity={max_similarity:.3f} "
+                f"< threshold={self.MIN_VECTOR_SIMILARITY}). "
+                f"Register a plugin that handles: '{task}'"
+            )
+
         return best_meta
 
     async def ensure_description_embeddings(self, context: PipelineContext) -> None:

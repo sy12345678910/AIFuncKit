@@ -5,7 +5,7 @@ from typing import Any
 
 from schemas.pipeline_context import PipelineContext
 from orchestrator.pipelines.base import BasePipeline
-from orchestrator.pipelines.strategies.timeout import TimeoutExecutionStrategy
+from orchestrator.pipelines.import_strategies.timeout import TimeoutExecutionStrategy
 
 
 class TimeoutPipeline(BasePipeline):
@@ -40,3 +40,4 @@ class TimeoutPipeline(BasePipeline):
                 "args": {},
                 "result": {"timeout": timeout_seconds, "status": "timed_out"},
             })
+    

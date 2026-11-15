@@ -9,7 +9,7 @@ class LLMConfig(BaseModel):
 class MetadataForLLM(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    cached_metadata: List
+    cached_metadata: List[dict[str, Any]]
     context_block: Any = ""
     
 class PipelineNode(BaseModel):

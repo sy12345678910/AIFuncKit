@@ -4,7 +4,7 @@ from typing import Any
 
 from schemas.pipeline_context import PipelineContext
 from orchestrator.pipelines.base import BasePipeline
-from orchestrator.pipelines.strategies.parallel import ParallelExecutionStrategy
+from orchestrator.pipelines.import_strategies.parallel import ParallelExecutionStrategy
 
 
 class ParallelPipeline(BasePipeline):

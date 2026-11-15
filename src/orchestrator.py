@@ -67,7 +67,8 @@ class AIOrchestrator:
         }
         self.provider: str = provider
         self.runtime_memory: AIRAGMemory = AIRAGMemory(db_path)
-        self.client: ollama.AsyncClient = ollama.AsyncClient()
+        client_cls = getattr(ollama, "AsyncClient", None) or getattr(ollama, "Client", None)
+        self.client: Any = client_cls() if client_cls else None
         self._modules_cache: dict[str, Any] = {}
         self.cached_metadata: list[dict[str, Any]] = cached_metadata
 

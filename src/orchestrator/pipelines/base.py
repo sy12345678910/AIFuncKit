@@ -12,7 +12,12 @@ from orchestrator.general_methods import maybe_await
 from orchestrator.services.action_execution import ActionExecutionService
 from orchestrator.services.argument_extraction import ArgumentExtractionService
 from orchestrator.services.plugin_routing import PluginRoutingService
+from orchestrator.services.break_circus import BreakCircusService
 from schemas.memory_schemas import MemoryRecord, RecordData
+from exceptions.pipeline_exceptions import (
+    InvalidPipelineStateException,
+    InvaildPipelineStateException,
+)
 
 
 class BasePipeline(ABC):
@@ -30,20 +35,26 @@ class BasePipeline(ABC):
         self.extraction = extraction or ArgumentExtractionService()
         self.execution = execution or ActionExecutionService()
         self.strategy: Any = None
+        self.circuit_breaker = BreakCircusService()
 
     @abstractmethod
     async def execute(self, context: PipelineContext) -> None:
         """Run this topology against the provided context."""
-
+        
     async def _execute_task_node(
         self,
         task: Any,
         context: PipelineContext,
         plugin_meta: Optional[dict[str, Any]] = None,
     ) -> Optional[dict[str, Any]]:
-        """Route, extract, invoke, and persist a single task in the current pipeline."""
+        """execute one task"""
+        if hasattr(self, "circuit_breaker"):
+            self.circuit_breaker.check_status()
+
         result = await self.process_task(task, context, plugin_meta=plugin_meta)
         if result is None:
+            if hasattr(self, "circuit_breaker"):
+                self.circuit_breaker.record_failure()
             return None
 
         func_data, task_ctx, task_emb = result
@@ -51,16 +62,42 @@ class BasePipeline(ABC):
             executed = await self.execution.execute(func_data)
             func_data["result"] = executed
             context.execution_results.append(func_data)
+
+            self._update_context_after_execution(func_data, executed, context, task)
             await self.persist_extraction(context, task, task_ctx, func_data, task_emb)
+
+            if hasattr(self, "circuit_breaker"):
+                self.circuit_breaker.record_succes()
+
             return func_data
         except Exception as exc:
-            logger.error(
-                "Pipeline task '%s' execution failed: %s",
-                task,
-                exc,
-                exc_info=True,
-            )
+            logger.error("Pipeline task '%s' execution failed: %s", task, exc, exc_info=True)
+            if hasattr(self, "circuit_breaker"):
+                self.circuit_breaker.record_failure()
             return None
+
+    def _update_context_after_execution(
+        self,
+        func_data: dict[str, Any],
+        executed: Any,
+        context: PipelineContext,
+        task: Any,
+    ) -> None:
+        """Update plugin's live context and result of steps in enviroment"""
+        plugin_name = func_data.get("plugin_name")
+        target_method = func_data.get("method")
+        
+        if target_method and hasattr(target_method, "__self__"):
+            plugin_inst = getattr(target_method, "__self__", None)
+            if plugin_inst and hasattr(plugin_inst, "get_live_context"):
+                live_ctx = plugin_inst.get_live_context()
+                if plugin_name and isinstance(live_ctx, dict):
+                    context.environment_state.setdefault(plugin_name, {}).update(live_ctx)
+
+        if executed is not None:
+            context.environment_state["_last_result"] = executed
+            action_key = func_data.get("action_name") or str(task)
+            context.environment_state.setdefault("_step_results", {})[action_key] = executed
 
     async def process_task(
         self,
@@ -121,6 +158,8 @@ class BasePipeline(ABC):
             )
             
             return None
+    
+    
 
     async def persist_extraction(
         self,
@@ -132,11 +171,12 @@ class BasePipeline(ABC):
     ) -> None:
         """Store a successful extraction example in runtime memory."""
         try:
+            clean_args: dict[str, Any] = func_data.get("args") or {}
             record_data = RecordData(
                 layer="extraction",
                 user_prompt=str(task),
                 context_dict=task_ctx,
-                args=func_data,
+                args=clean_args,
                 raw_vector=task_emb,
             )
             await context.memory.add_record(record_data=record_data)
@@ -156,6 +196,59 @@ class BasePipeline(ABC):
             "loop_variable" in node or "iterations" in node or "repetitions" in node
         )
 
+    def _is_for_each_node(self, node: Any) -> bool:
+        return isinstance(node, dict) and (
+            "items" in node or "for_each" in node or "collection" in node
+        )
+
     def _is_timeout_node(self, node: Any) -> bool:
         return isinstance(node, dict) and ("timeout" in node or "timeout_seconds" in node)
 
+    def validate_state(self, context: PipelineContext) -> None:
+        """Validate pipeline context and tasks before execution."""
+        if context is None:
+            raise InvalidPipelineStateException("Pipeline context is empty or None.")
+
+        if not context.metadata or not context.metadata.cached_metadata:
+            raise InvalidPipelineStateException(
+                "No registered plugins or actions found in pipeline metadata."
+            )
+
+        if not context.decomposed_tasks:
+            raise InvalidPipelineStateException("No tasks provided for pipeline execution.")
+
+        for task in context.decomposed_tasks:
+            if isinstance(task, dict):
+                if self._is_conditional_node(task) and not task.get("condition_variable"):
+                    raise InvalidPipelineStateException(
+                        "Conditional task missing required 'condition_variable'."
+                    )
+                if self._is_loop_node(task):
+                    reps = task.get("repetitions") or task.get("iterations")
+                    if reps is not None and int(reps) < 0:
+                        raise InvalidPipelineStateException(
+                            f"Loop repetitions must be non-negative, got {reps}."
+                        )
+                if self._is_timeout_node(task):
+                    timeout = task.get("timeout") or task.get("timeout_seconds")
+                    if timeout is not None and float(timeout) < 0:
+                        raise InvalidPipelineStateException(
+                            f"Timeout value must be non-negative, got {timeout}."
+                        )
+                if self._is_for_each_node(task):
+                    items = task.get("items") or task.get("for_each") or task.get("collection")
+                    if items is None:
+                        raise InvalidPipelineStateException(
+                            "ForEach task missing required 'items' collection."
+                        )
+
+    def _pre_validation(
+        self,
+        tasks: Optional[Any] = None,
+        context: Optional[PipelineContext] = None,
+    ) -> None:
+        """Compatibility wrapper for pipeline pre-validation."""
+        if isinstance(tasks, PipelineContext):
+            self.validate_state(tasks)
+        elif context is not None:
+            self.validate_state(context)

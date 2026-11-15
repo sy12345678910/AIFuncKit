@@ -66,9 +66,12 @@ class BasePlugin(ABC):
         """Return the current plugin runtime context dictionary."""
         return self.live_context
 
-    def update_contetx(self, key: str, value: Any) -> None:
+    def update_context(self, key: str, value: Any) -> None:
         """Store a value in the plugin live context under the provided key."""
         self.live_context[key] = value
+
+    update_contetx = update_context
+    update_contexti = update_context
 
 
 def decription(text: str) -> Callable[[Callable[..., Any]], Callable[..., Any]]:

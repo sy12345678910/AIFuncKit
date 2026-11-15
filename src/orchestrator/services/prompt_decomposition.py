@@ -47,7 +47,11 @@ class PromptDecompositionService:
             "object using the JSON schema with fields 'condition_variable', 'if_true', "
             "and 'if_false'. The 'condition_variable' MUST reflect a state variable from "
             "the AVAILABLE SYSTEM CAPABILITIES in strict format 'plugin_name.variable_name'\n"
-            "5. Return the result ONLY in accordance with the provided JSON schema."
+            "5. IF the user prompt requires iterating over a collection or list of items "
+            "(e.g., 'for each file...', 'for all items...'), construct a for_each block "
+            "object using the JSON schema with fields 'items' (list of items or variable name), "
+            "and 'task' (description for each item, using '{item}' placeholder if needed).\n"
+            "6. Return the result ONLY in accordance with the provided JSON schema."
         )
 
         try:

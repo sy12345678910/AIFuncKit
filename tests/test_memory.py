@@ -31,7 +31,7 @@ async def test_init_and_load_cache_creates_table_and_empty_caches(memory_store: 
     ) as cursor:
         row = await cursor.fetchone()
 
-    assert row == ("memory_history",)
+    assert tuple(row) == ("memory_history",)
     assert memory_store.id_cache == {"decomposition": [], "extraction": []}
     assert memory_store.vector_list_cache == {"decomposition": [], "extraction": []}
     assert memory_store.compiled_matrix_cache == {"decomposition": None, "extraction": None}
@@ -148,6 +148,6 @@ async def test_archive_old_records_marks_rows_and_reloads_ram_cache(memory_store
     ) as cursor:
         archived = await cursor.fetchone()
 
-    assert archived == (1,)
+    assert tuple(archived) == (1,)
     assert len(memory_store.id_cache["extraction"]) == 0
     assert memory_store.compiled_matrix_cache["extraction"] is None

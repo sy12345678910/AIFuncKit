@@ -42,6 +42,9 @@ def test_topology_resolver_selects_correct_pipeline_by_task_type() -> None:
     timeout_tasks = [{"timeout": 0.5, "task": "slow task"}]
     assert TopologyResolver.resolve(SimpleNamespace(decomposed_tasks=timeout_tasks)).__name__ == "TimeoutPipeline"
 
+    for_each_tasks = [{"items": ["file1", "file2"], "task": "upload"}]
+    assert TopologyResolver.resolve(SimpleNamespace(decomposed_tasks=for_each_tasks)).__name__ == "ForEachLoopPipeline"
+
 
 @pytest.mark.asyncio
 async def test_conditional_pipeline_executes_only_matching_branch(pipeline_context: PipelineContext) -> None:
@@ -69,7 +72,7 @@ async def test_loop_pipeline_repeats_body_for_requested_iterations(pipeline_cont
 
 @pytest.mark.asyncio
 async def test_timeout_pipeline_marks_task_as_timed_out(pipeline_context: PipelineContext) -> None:
-    async def slow_task() -> None:
+    async def slow_task(*args: Any, **kwargs: Any) -> None:
         await __import__("asyncio").sleep(0.1)
         return None
 

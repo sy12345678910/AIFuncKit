@@ -49,6 +49,7 @@ runtime_rag.db
 app_execution.log
 test_execution.log
 test_run.log
+plugins/
 
 # === IDE & OS Hidden Files ===
 .idea/

@@ -27,6 +27,7 @@ class SQLiteRepository(BaseRepository):
         try:
             if self.db is None:
                 self.db = await aiosqlite.connect(self.db_path)
+                self.db.row_factory = aiosqlite.Row
                 await self.db.execute("PRAGMA journal_mode = WAL;")
                 await self.db.execute("PRAGMA synchronous = NORMAL;")
                 await self.db.execute(
@@ -74,8 +75,8 @@ class SQLiteRepository(BaseRepository):
 
         try:
             blob: bytes = record_data.raw_vector.tobytes()
-            json_str: str = json.dumps(record_data.args, ensure_ascii=False)
-            context_str: str = json.dumps(record_data.context_dict, ensure_ascii=False)
+            json_str: str = json.dumps(record_data.args, ensure_ascii=False, default=str)
+            context_str: str = json.dumps(record_data.context_dict, ensure_ascii=False, default=str)
 
             async with self.db.execute(
                 """
@@ -111,10 +112,24 @@ class SQLiteRepository(BaseRepository):
                 if not row:
                     return None
 
+                snapshot: Any = row[1]
+                if isinstance(snapshot, str):
+                    try:
+                        snapshot = json.loads(snapshot)
+                    except json.JSONDecodeError:
+                        pass
+
+                extracted: Any = row[2]
+                if isinstance(extracted, str):
+                    try:
+                        extracted = json.loads(extracted)
+                    except json.JSONDecodeError:
+                        pass
+
                 return MemoryRecord(
                     user_prompt=str(row[0]),
-                    context_snapshot=json.loads(row[1]),
-                    extracted_json=json.loads(row[2]),
+                    context_snapshot=snapshot,
+                    extracted_json=extracted,
                 )
         except (aiosqlite.Error, json.JSONDecodeError, TypeError) as exc:
             logger.error("Failed to fetch RAG record id=%s: %s", record_id, exc, exc_info=True)

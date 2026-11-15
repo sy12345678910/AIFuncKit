@@ -20,11 +20,14 @@ class AIRAGMemoryManager:
     async def initialize(self):
         await self.repository.init_db()
         records: List[ActiveVectors] = await self.repository.load_all_active_vectors()
-        self.search_engine.load_initial_cache(
-            layer="decomposition",
-            ids=[r.id for r in records],
-            vectors=[r.vector for r in records]
-        )
+        for layer_name in ("decomposition", "extraction"):
+            layer_records = [r for r in records if r.layer == layer_name]
+            if layer_records:
+                self.search_engine.load_initial_cache(
+                    layer=layer_name,
+                    ids=[r.id for r in layer_records],
+                    vectors=[r.vector for r in layer_records]
+                )
 
     async def init_and_load_cache(self) -> None:
         await self.initialize()

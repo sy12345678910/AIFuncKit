@@ -21,6 +21,10 @@ class ArgumentExtractionService:
         memory_example: Optional[MemoryRecord],
     ) -> dict[str, Any]:
         """Infer argument values for a plugin method from the active runtime context."""
+        if not expected_args:
+            logger.info("Task '%s' requires no arguments; skipping extraction", task)
+            return {}
+
         memory_prompt_block: str = ""
         if memory_example:
             past_prompt = memory_example.user_prompt

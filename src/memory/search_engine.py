@@ -12,7 +12,8 @@ class VectorSearchEngine:
         if not vectors:
             return
         self._ids[layer] = ids
-        self._matrices[layer] = np.stack(vectors, axis=0)
+        norm_vectors = [normalize_vector(v) for v in vectors]
+        self._matrices[layer] = np.stack(norm_vectors, axis=0)
 
     def add_vector_to_cache(self, layer: str, record_id: int, raw_vector: NDArray[np.float32]) -> None:
         norm_vector = normalize_vector(raw_vector)

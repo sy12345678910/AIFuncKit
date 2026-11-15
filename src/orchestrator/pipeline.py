@@ -14,10 +14,11 @@ from orchestrator.services.action_execution import ActionExecutionService
 from orchestrator.services.argument_extraction import ArgumentExtractionService
 from orchestrator.services.plugin_routing import PluginRoutingService
 from orchestrator.services.prompt_decomposition import PromptDecompositionService
+from orchestrator.services.state_manager import StateManagerService
+from orchestrator.services.break_circus import BreakCircusService
 from orchestrator.topology_resolver import TopologyResolver
 from schemas.memory_schemas import RecordData
 from schemas.orchestrator_schemas import LLMConfig, MetadataForLLM, ParamsForExecution
-
 
 class MasterOrchestrationEngine:
     """Facade that decomposes a prompt, resolves topology, and boots pipeline execution."""
@@ -31,7 +32,7 @@ class MasterOrchestrationEngine:
         db_path: str = "aie_runtime.db",
         emb_model: Any = "sentence_transformers/paraphrase-multilingual-MiniLM-L12-v2",
         routing_model: str = "vector",
-        async_loop: bool = False
+        failure_threashold: int = 3
     ) -> None:
         self.runtime_memory = AIRAGMemoryManager(db_path=db_path)
         self.llm_config = LLMConfig(
@@ -51,7 +52,10 @@ class MasterOrchestrationEngine:
         self.extraction = ArgumentExtractionService()
         self.execution = ActionExecutionService()
         self.topology_resolver = TopologyResolver()
+        self.breaker_circus = BreakCircusService()
+        self.breaker_circus.failure_threashold = failure_threashold
         self.client: Any = None
+        
 
     async def ensure_embedding_model(self) -> None:
         """Ensure the configured embedding model is loaded for vector encoding."""
@@ -100,22 +104,30 @@ class MasterOrchestrationEngine:
             extraction=self.extraction,
             execution=self.execution,
         )
-        await pipeline.execute(context)
-
-        decomposition_result: dict[str, list[str]] = {
-            "tasks": [str(task) for task in context.decomposed_tasks]
-        }
+        pipeline.validate_state(context)
+        snapshot = StateManagerService(context=context)
+        snapshot.capture()
         try:
-            record_data = RecordData(
-                layer="decomposition",
-                user_prompt=user_prompt,
-                context_dict={},
-                args=decomposition_result,
-                raw_vector=prompt_emb,
-            )
-            await self.runtime_memory.add_record(record_data=record_data)
-        except Exception as exc:
-            logger.error("Failed to persist decomposition memory: %s", exc, exc_info=True)
+            await pipeline.execute(context)
+        except Exception as e:
+            snapshot.rollback()
+            raise e
+
+        if context.execution_results:
+            decomposition_result: dict[str, list[str]] = {
+                "tasks": [str(task) for task in context.decomposed_tasks]
+            }
+            try:
+                record_data = RecordData(
+                    layer="decomposition",
+                    user_prompt=user_prompt,
+                    context_dict={},
+                    args=decomposition_result,
+                    raw_vector=prompt_emb,
+                )
+                await self.runtime_memory.add_record(record_data=record_data)
+            except Exception as exc:
+                logger.error("Failed to persist decomposition memory: %s", exc, exc_info=True)
 
         logger.info("Pipeline produced %s executable item(s)", len(context.execution_results))
         return context.execution_results

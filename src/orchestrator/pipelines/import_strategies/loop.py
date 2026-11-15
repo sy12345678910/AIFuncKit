@@ -4,15 +4,16 @@ import asyncio
 from typing import Any, Iterable
 
 from schemas.pipeline_context import PipelineContext
-from orchestrator.pipelines.strategies.base import ExecutionStrategy
+from orchestrator.pipelines.sequential import SequentialPipeline
+from orchestrator.pipelines.import_strategies.base import ExecutionStrategy
 
 
-class TimeoutExecutionStrategy(ExecutionStrategy):
-    strategy_type = "timeout"
+class LoopExecutionStrategy(ExecutionStrategy):
+    strategy_type = "loop"
 
     async def execute(self, context: PipelineContext, nodes: Iterable[Any]) -> None:
         for node in list(nodes):
-            if not self.pipeline._is_timeout_node(node):
+            if not self.pipeline._is_loop_node(node):
                 continue
             await self.pipeline.execute_for_node(node, context)
 

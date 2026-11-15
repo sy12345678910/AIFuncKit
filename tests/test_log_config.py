@@ -28,10 +28,10 @@ def isolated_logger() -> None:
         root.addHandler(handler)
 
 
-def test_configure_logging_creates_queue_listener_and_file(tmp_path: Path, isolated_logger: None) -> None:
+def test_configure_logging_all_level_enables_debug_and_file(tmp_path: Path, isolated_logger: None) -> None:
     log_file = tmp_path / "swift_core_ai.log"
 
-    lc.configure_logging(verbose=True, log_to_file=str(log_file))
+    lc.configure_logging(log_level="all", log_to_file=str(log_file))
 
     assert lc._listener is not None
     assert len(lc._listener.handlers) == 2
@@ -43,13 +43,21 @@ def test_configure_logging_creates_queue_listener_and_file(tmp_path: Path, isola
     assert root_logger.level == logging.DEBUG
 
 
-def test_configure_logging_quiet_mode_sets_critical_level(isolated_logger: None) -> None:
-    lc.configure_logging(verbose=False, log_to_file=None)
+def test_configure_logging_warning_level_filters_out_info(isolated_logger: None) -> None:
+    lc.configure_logging(log_level="warning", log_to_file=None)
 
     root_logger = logging.getLogger(lc.LOGGER_NAME)
-    assert root_logger.level == logging.CRITICAL
+    assert root_logger.level == logging.WARNING
     assert lc._listener is not None
     assert root_logger.handlers and isinstance(root_logger.handlers[0], logging.handlers.QueueHandler)
 
     lc._stop_listener()
     root_logger.handlers.clear()
+
+
+def test_configure_logging_silent_level_disables_logging(isolated_logger: None) -> None:
+    lc.configure_logging(log_level="silent", log_to_file=None)
+
+    root_logger = logging.getLogger(lc.LOGGER_NAME)
+    assert root_logger.disabled is True
+    assert lc._listener is None or not lc._listener.handlers

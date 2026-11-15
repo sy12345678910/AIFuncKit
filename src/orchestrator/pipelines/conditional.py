@@ -5,8 +5,8 @@ from typing import Any
 from log_config import logger
 from schemas.pipeline_context import PipelineContext
 from orchestrator.pipelines.base import BasePipeline
-from orchestrator.pipelines.strategies.conditional import ConditionalExecutionStrategy
-
+from orchestrator.pipelines.import_strategies.conditional import ConditionalExecutionStrategy
+from exceptions.pipeline_exceptions import InvaildPipelineStateException
 
 class ConditionalPipeline(BasePipeline):
     """Route execution into if_true / if_false sequential branches from live state."""
@@ -31,8 +31,12 @@ class ConditionalPipeline(BasePipeline):
 
         if "." in cond_var:
             plugin_part, key_part = cond_var.split(".", 1)
-            plugin_ctx: dict[str, Any] = context.environment_state.get(plugin_part, {})
-            condition_met = bool(plugin_ctx.get(key_part, False))
+            if plugin_part not in context.environment_state or key_part not in context.environment_state[plugin_part]:
+                raise InvaildPipelineStateException(f"condition rely on variable, which doesn't exist '{cond_var}'")
+            condition_met = bool(context.environment_state[plugin_part][key_part])
+        elif cond_var in context.environment_state:
+            condition_met = bool(context.environment_state.get(cond_var, False))
+        else: raise InvaildPipelineStateException(f'condition variable doesn\'t exist')
 
         logger.info(
             "Conditional branch '%s' evaluated to %s",

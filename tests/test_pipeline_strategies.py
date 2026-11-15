@@ -12,13 +12,16 @@ for entry in (ROOT, SRC_ROOT, MODEL_PROVIDE_ROOT):
     if path not in sys.path:
         sys.path.insert(0, path)
 
-from src.schemas.pipeline_context import PipelineContext
-from src.schemas.orchestrator_schemas import LLMConfig, MetadataForLLM, ParamsForExecution
-from src.orchestrator.pipelines.sequential import SequentialPipeline
-from src.orchestrator.pipelines.parallel import ParallelPipeline
-from src.orchestrator.pipelines.conditional import ConditionalPipeline
-from src.orchestrator.pipelines.loop import LoopPipeline
-from src.orchestrator.pipelines.timeout import TimeoutPipeline
+from schemas.pipeline_context import PipelineContext
+from schemas.orchestrator_schemas import LLMConfig, MetadataForLLM, ParamsForExecution
+from orchestrator.pipelines.sequential import SequentialPipeline
+from orchestrator.pipelines.parallel import ParallelPipeline
+from orchestrator.pipelines.conditional import ConditionalPipeline
+from orchestrator.pipelines.loop import LoopPipeline
+from orchestrator.pipelines.timeout import TimeoutPipeline
+from orchestrator.pipelines.for_each_loop import ForEachLoopPipeline
+from exceptions.pipeline_exceptions import InvalidPipelineStateException
+import pytest
 
 
 def _build_context() -> PipelineContext:
@@ -35,6 +38,7 @@ def _build_context() -> PipelineContext:
     )
 
 
+@pytest.mark.asyncio
 async def test_pipeline_type_and_strategy_execution() -> None:
     ctx = _build_context()
     ctx.decomposed_tasks = ["first", "second"]
@@ -84,3 +88,63 @@ async def test_pipeline_type_and_strategy_execution() -> None:
     ctx.decomposed_tasks = [{"timeout": 1.5, "task": "slow"}]
     await timeout.execute(ctx)
     timeout.execute_with_timeout.assert_awaited_once()
+
+    for_each = ForEachLoopPipeline()
+    assert for_each.pipeline_type == "for_each_loop"
+    for_each.run_nodes = AsyncMock()
+    ctx.decomposed_tasks = [{"items": ["a", "b"], "task": "process {item}"}]
+    await for_each.execute(ctx)
+    for_each.run_nodes.assert_awaited_once()
+
+
+def test_pipeline_state_validation() -> None:
+    ctx = _build_context()
+    seq = SequentialPipeline()
+
+    # 1. Fails if no plugins in cached_metadata
+    ctx.decomposed_tasks = ["run backup"]
+    with pytest.raises(InvalidPipelineStateException, match="No registered plugins"):
+        seq.validate_state(ctx)
+
+    # 2. Fails if no tasks to execute
+    ctx.metadata.cached_metadata = [{"action_name": "backup", "name": "backup"}]
+    ctx.decomposed_tasks = []
+    with pytest.raises(InvalidPipelineStateException, match="No tasks provided"):
+        seq.validate_state(ctx)
+
+    # 3. Fails if conditional task is missing condition_variable
+    ctx.decomposed_tasks = [{"condition_variable": "", "if_true": ["yes"]}]
+    with pytest.raises(InvalidPipelineStateException, match="missing required 'condition_variable'"):
+        seq.validate_state(ctx)
+
+    # 4. Fails if loop task has negative repetitions
+    ctx.decomposed_tasks = [{"loop_variable": "test", "repetitions": -1}]
+    with pytest.raises(InvalidPipelineStateException, match="repetitions must be non-negative"):
+        seq.validate_state(ctx)
+
+    # 5. Succeeds when valid
+    ctx.decomposed_tasks = ["run backup"]
+    seq.validate_state(ctx)
+
+
+@pytest.mark.asyncio
+async def test_for_each_pipeline_iteration_and_variable_substitution() -> None:
+    ctx = _build_context()
+    ctx.metadata.cached_metadata = [{"action_name": "process", "name": "process"}]
+    ctx.environment_state = {"file_list": ["doc.txt", "img.png"]}
+
+    pipeline = ForEachLoopPipeline()
+    executed_tasks = []
+
+    async def mock_execute(self_seq, c):
+        executed_tasks.extend(c.decomposed_tasks)
+        assert c.environment_state.get("item") in ["doc.txt", "img.png"]
+
+    from unittest.mock import patch
+    with patch("orchestrator.pipelines.sequential.SequentialPipeline.execute", new=mock_execute):
+        node = {"items": "file_list", "task": "process {item}", "item_variable": "item"}
+        await pipeline.execute_for_node(node, ctx)
+
+    assert executed_tasks == ["process doc.txt", "process img.png"]
+
+
