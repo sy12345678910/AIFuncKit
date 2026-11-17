@@ -1,4 +1,4 @@
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, ConfigDict
 
 class LLMConfig(BaseModel):
@@ -19,3 +19,8 @@ class PipelineNode(BaseModel):
 
 class ParamsForExecution(BaseModel):
     async_loop: bool = False
+    
+class PromptConfig(BaseModel):
+    user_prompt: str
+    prompt_injection_patern: Optional[List[str]]
+    max_prompt_length: int

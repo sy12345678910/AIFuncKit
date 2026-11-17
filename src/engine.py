@@ -6,7 +6,6 @@ from typing import Any, Callable, Dict, List, Optional
 
 from src.exceptions.exceptions import PluginForDeleteNotFoundError
 from log_config import configure_logging, logger
-from exceptions.pipeline_exceptions import HumansStopPipelineException
 from orchestrator.pipeline import MasterOrchestrationEngine
 from orchestrator.pipelines.schedule import SchedulerService
 from sdk import BasePlugin
@@ -26,7 +25,9 @@ class AIEngine:
         verbose: Optional[bool] = None,
         log_to_file: Optional[str] = "aifunckit.log",
         log_level: Optional[str | int] = None,
-        failure_threashold: int = 3
+        failure_threashold: int = 3,
+        prompt_injection_protection: Optional[List[str]] = None,
+        max_prompt_length: int = 4096
     ) -> None:
         """Initialize the engine, logging, and orchestrator with default runtime settings."""
         configure_logging(verbose=verbose, log_to_file=log_to_file, log_level=log_level)
@@ -46,7 +47,9 @@ class AIEngine:
             db_path=str(db_path),
             emb_model=emb_model,
             routing_model=routing_model,
-            failure_threashold = failure_threashold
+            failure_threashold = failure_threashold,
+            prompt_injection_protection=prompt_injection_protection,
+            max_prompt_length=max_prompt_length
         )
         self.scheduler: SchedulerService = SchedulerService()
         logger.info(

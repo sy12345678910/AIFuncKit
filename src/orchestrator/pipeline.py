@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import inspect
-from typing import Any, Optional
+from typing import Any, Optional, List
 
 import numpy as np
 from numpy.typing import NDArray
@@ -15,10 +15,11 @@ from orchestrator.services.argument_extraction import ArgumentExtractionService
 from orchestrator.services.plugin_routing import PluginRoutingService
 from orchestrator.services.prompt_decomposition import PromptDecompositionService
 from orchestrator.services.state_manager import StateManagerService
+from src.orchestrator.services.sanitizer import PromptSanitizer
 from orchestrator.services.break_circus import BreakCircusService
 from orchestrator.topology_resolver import TopologyResolver
 from schemas.memory_schemas import RecordData
-from schemas.orchestrator_schemas import LLMConfig, MetadataForLLM, ParamsForExecution
+from schemas.orchestrator_schemas import LLMConfig, MetadataForLLM, ParamsForExecution, PromptConfig
 
 class MasterOrchestrationEngine:
     """Facade that decomposes a prompt, resolves topology, and boots pipeline execution."""
@@ -32,7 +33,9 @@ class MasterOrchestrationEngine:
         db_path: str = "aie_runtime.db",
         emb_model: Any = "sentence_transformers/paraphrase-multilingual-MiniLM-L12-v2",
         routing_model: str = "vector",
-        failure_threashold: int = 3
+        failure_threashold: int = 3,
+        prompt_injection_protection: Optional[List[str]] = None,
+        max_prompt_length: int = 4096
     ) -> None:
         self.runtime_memory = AIRAGMemoryManager(db_path=db_path)
         self.llm_config = LLMConfig(
@@ -52,9 +55,12 @@ class MasterOrchestrationEngine:
         self.extraction = ArgumentExtractionService()
         self.execution = ActionExecutionService()
         self.topology_resolver = TopologyResolver()
+        self.sanitizer = PromptSanitizer()
         self.breaker_circus = BreakCircusService()
         self.breaker_circus.failure_threashold = failure_threashold
         self.client: Any = None
+        self.prompt_injection_protection = prompt_injection_protection
+        self.max_prompt_length = max_prompt_length
         
 
     async def ensure_embedding_model(self) -> None:
@@ -74,7 +80,11 @@ class MasterOrchestrationEngine:
     ) -> PipelineContext:
         system_context: dict[str, Any] = current_context if current_context is not None else {}
         return PipelineContext(
-            user_prompt=user_prompt,
+            prompt=PromptConfig(
+                user_prompt=user_prompt,
+                max_prompt_length=self.max_prompt_length,
+                prompt_injection_patern=self.prompt_injection_protection    
+            ),
             llm_config=self.llm_config,
             metadata=MetadataForLLM(
                 cached_metadata=self.cached_metadata,
@@ -93,6 +103,10 @@ class MasterOrchestrationEngine:
     ) -> list[dict[str, Any]]:
         """Decompose a prompt, resolve topology, and execute the selected pipeline."""
         context = self._build_context(user_prompt, current_context)
+        try: 
+            self.sanitizer.sanitize(context.user_prompt)
+        except Exception:
+            self.breaker_circus.emergency_halt(reason="Uncorrect user prompt")
         prompt_emb: NDArray[np.float32] = await self.decomposition.decompose(context)
         if not context.decomposed_tasks:
             logger.warning("Pipeline aborted: no tasks produced from prompt")

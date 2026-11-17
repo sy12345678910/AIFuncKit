@@ -1,12 +1,12 @@
 from pydantic import BaseModel, ConfigDict
 from typing import Any, Dict, List
-from schemas.orchestrator_schemas import LLMConfig, MetadataForLLM, ParamsForExecution
+from schemas.orchestrator_schemas import LLMConfig, MetadataForLLM, ParamsForExecution, PromptConfig
 
 
-class   PipelineContext(BaseModel):
+class PipelineContext(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    user_prompt: str
+    user_prompt: PromptConfig
     llm_config: LLMConfig
     metadata: MetadataForLLM
     memory: Any
