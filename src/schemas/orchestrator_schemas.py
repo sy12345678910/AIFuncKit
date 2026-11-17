@@ -22,5 +22,5 @@ class ParamsForExecution(BaseModel):
     
 class PromptConfig(BaseModel):
     user_prompt: str
-    prompt_injection_patern: Optional[List[str]]
-    max_prompt_length: int
+    prompt_injection_pattern: Optional[List[str]] = None
+    max_prompt_length: int = 4096

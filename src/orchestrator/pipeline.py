@@ -15,11 +15,12 @@ from orchestrator.services.argument_extraction import ArgumentExtractionService
 from orchestrator.services.plugin_routing import PluginRoutingService
 from orchestrator.services.prompt_decomposition import PromptDecompositionService
 from orchestrator.services.state_manager import StateManagerService
-from src.orchestrator.services.sanitizer import PromptSanitizer
+from orchestrator.services.sanitizer import PromptSanitizer
 from orchestrator.services.break_circus import BreakCircusService
 from orchestrator.topology_resolver import TopologyResolver
 from schemas.memory_schemas import RecordData
 from schemas.orchestrator_schemas import LLMConfig, MetadataForLLM, ParamsForExecution, PromptConfig
+from exceptions.prompt_exeption import PromptInjectionError, TooLongPromptError
 
 class MasterOrchestrationEngine:
     """Facade that decomposes a prompt, resolves topology, and boots pipeline execution."""
@@ -55,12 +56,14 @@ class MasterOrchestrationEngine:
         self.extraction = ArgumentExtractionService()
         self.execution = ActionExecutionService()
         self.topology_resolver = TopologyResolver()
-        self.sanitizer = PromptSanitizer()
-        self.breaker_circus = BreakCircusService()
-        self.breaker_circus.failure_threashold = failure_threashold
-        self.client: Any = None
         self.prompt_injection_protection = prompt_injection_protection
         self.max_prompt_length = max_prompt_length
+        self.sanitizer = PromptSanitizer(
+            custom_patterns=prompt_injection_protection,
+            max_length=max_prompt_length,
+        )
+        self.breaker_circus = BreakCircusService(failure_threshold=failure_threashold)
+        self.client: Any = None
         
 
     async def ensure_embedding_model(self) -> None:
@@ -79,12 +82,14 @@ class MasterOrchestrationEngine:
         current_context: Optional[dict[str, Any]],
     ) -> PipelineContext:
         system_context: dict[str, Any] = current_context if current_context is not None else {}
+        prompt_config = PromptConfig(
+            user_prompt=user_prompt,
+            max_prompt_length=self.max_prompt_length,
+            prompt_injection_pattern=self.prompt_injection_protection,
+        )
         return PipelineContext(
-            prompt=PromptConfig(
-                user_prompt=user_prompt,
-                max_prompt_length=self.max_prompt_length,
-                prompt_injection_patern=self.prompt_injection_protection    
-            ),
+            user_prompt=prompt_config.user_prompt,
+            prompt=prompt_config,
             llm_config=self.llm_config,
             metadata=MetadataForLLM(
                 cached_metadata=self.cached_metadata,
@@ -103,10 +108,14 @@ class MasterOrchestrationEngine:
     ) -> list[dict[str, Any]]:
         """Decompose a prompt, resolve topology, and execute the selected pipeline."""
         context = self._build_context(user_prompt, current_context)
-        try: 
-            self.sanitizer.sanitize(context.user_prompt)
-        except Exception:
-            self.breaker_circus.emergency_halt(reason="Uncorrect user prompt")
+        try:
+            sanitized_prompt = self.sanitizer.sanitize(context.user_prompt)
+        except (PromptInjectionError, TooLongPromptError):
+            logger.error("Rejected user prompt before decomposition")
+            raise
+        context.user_prompt = sanitized_prompt
+        if context.prompt is not None:
+            context.prompt.user_prompt = sanitized_prompt
         prompt_emb: NDArray[np.float32] = await self.decomposition.decompose(context)
         if not context.decomposed_tasks:
             logger.warning("Pipeline aborted: no tasks produced from prompt")

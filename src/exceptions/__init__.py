@@ -10,6 +10,7 @@ from exceptions.pipeline_exceptions import (
     InvalidPipelineStateException,
     InvaildPipelineStateException,
 )
+from exceptions.prompt_exeption import PromptInjectionError, TooLongPromptError
 
 __all__ = [
     "__AIBaseException",
@@ -18,4 +19,6 @@ __all__ = [
     "RoutingModeDoesNotExist",
     "InvalidPipelineStateException",
     "InvaildPipelineStateException",
+    "PromptInjectionError",
+    "TooLongPromptError",
 ]
