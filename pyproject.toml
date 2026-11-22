@@ -3,20 +3,39 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "intent-c"
+name = "aifunckit"
 dynamic = ["version"]
-description = "A Single-Pass Semantic Compiler and high-performance NumPy-driven automation orchestrator."
+description = "A lightweight, Python framework for AI task orchestration with deterministic pipelines and RAG-powered self-learning."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
+license = {text = "MIT"}
 authors = [
-    { name = "Sasha Yuvko", email = "sasha.yuvko2@gmail.com" }
+    {name = "Sasha Yuvko", email = "sasha.yuvko2@gmail.com"}
 ]
+keywords = [
+    "ai-orchestrator",
+    "local-llm",
+    "function-calling",
+    "pipelines",
+    "fastembed",
+    "pydantic",
+    "numpy",
+    "circuit-breaker",
+    "guardrails"
+]
+
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
 ]
 
 dependencies = [
@@ -24,17 +43,38 @@ dependencies = [
     "pydantic>=2.0.0",
     "aiosqlite>=0.19.0",
     "ollama>=0.4.0",
-    "sentence-transformers>=2.2.0",
+    "fastembed>=0.3.0",
 ]
 
 [project.optional-dependencies]
+gemini = ["google-genai>=0.1.0"]
+anthropic = ["anthropic>=0.30.0"]
+all_providers = [
+    "google-genai>=0.1.0",
+    "anthropic>=0.30.0",
+]
+blm_routing = ["laya>=0.4.0"]
 test = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/sy12345678910/IntentC/"
+Bug-Tracker = "https://github.com/sy12345678910/IntentC/issues"
+
 [tool.hatch.version]
-path = "src/intent_c/__init__.py"
+path = "src/__init__.py"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/intent_c"]
+packages = ["src"]
+
+[tool.black]
+line-length = 88
+target-version = ['py312']
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q"
+testpaths = ["tests"]
+pythonpath = [".", "src"]

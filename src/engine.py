@@ -1,34 +1,48 @@
 from __future__ import annotations
+
 import inspect
 from pathlib import Path
-from typing import Any, Callable, Optional, List, Dict
-from exceptions import PluginForDeleteNotFoundError
+from typing import Any, Callable, Dict, List, Optional
+
+from src.exceptions.exceptions import PluginForDeleteNotFoundError
 from log_config import configure_logging, logger
-from orchestrator import AIOrchestrator
+from orchestrator.pipeline import MasterOrchestrationEngine
+from orchestrator.pipelines.schedule import SchedulerService
 from sdk import BasePlugin
 
 
 class AIEngine:
+    """High-level runtime that coordinates plugin actions and orchestration logic."""
+
     def __init__(
         self,
         ai_model: str = "gemma4:e4b",
         context_window: int = 4096,
-        db_path: Path | str = Path("aie_runtine"),
+        db_path: Path | str = Path("aifunckit_runtine"),
         provider: str = "ollama",
         emb_model: str = "paraphrase-multilingual-MiniLM-L12-v2",
         routing_model: str = "vector",
-        verbose: bool = True,
-        log_to_file: Optional[str] = "swift_core_ai.log",
+        verbose: Optional[bool] = None,
+        log_to_file: Optional[str] = "aifunckit.log",
+        log_level: Optional[str | int] = None,
+        failure_threshold: int = 3,
+        prompt_injection_protection: Optional[List[str]] = None,
+        max_prompt_length: int = 4096,
+        guard_model_path: Optional[str] = None,
+        guard_tokenizer_path: Optional[str] = None,
+        guard_threshold: float = 0.85,
     ) -> None:
-        configure_logging(verbose=verbose, log_to_file=log_to_file)
-        self.verbose: bool = verbose
+        """Initialize the engine, logging, and orchestrator with default runtime settings."""
+        configure_logging(verbose=verbose, log_to_file=log_to_file, log_level=log_level)
+        self.verbose: Optional[bool] = verbose
+        self.log_level: Optional[str | int] = log_level
         self.log_to_file: Optional[str] = log_to_file
         self.embidding_model: str = emb_model
         self.cached_metadata: list[dict[str, Any]] = []
         self.actions: dict[str, Callable[..., Any]] = {}
         self.plugins: dict[str, BasePlugin] = {}
 
-        self.orchestrator = AIOrchestrator(
+        self.orchestrator: MasterOrchestrationEngine = MasterOrchestrationEngine(
             cached_metadata=self.cached_metadata,
             provider=provider,
             model_name=ai_model,
@@ -36,7 +50,14 @@ class AIEngine:
             db_path=str(db_path),
             emb_model=emb_model,
             routing_model=routing_model,
+            failure_threshold=failure_threshold,
+            prompt_injection_protection=prompt_injection_protection,
+            max_prompt_length=max_prompt_length,
+            guard_model_path=guard_model_path,
+            guard_tokenizer_path=guard_tokenizer_path,
+            guard_threshold=guard_threshold,
         )
+        self.scheduler: SchedulerService = SchedulerService()
         logger.info(
             "AIEngine created (provider=%s, model=%s, routing=%s)",
             provider,
@@ -45,6 +66,7 @@ class AIEngine:
         )
 
     async def initialize(self) -> None:
+        """Ensure the embedding model and runtime memory cache are initialized."""
         try:
             if hasattr(self.orchestrator, "ensure_embedding_model"):
                 await self.orchestrator.ensure_embedding_model()
@@ -56,7 +78,8 @@ class AIEngine:
             raise
 
     def register_plugin(self, obj: BasePlugin) -> None:
-        plugin_name = getattr(
+        """Register a plugin instance and add its decorated methods to the action registry."""
+        plugin_name: str = getattr(
             obj, "plugin_name", type(obj).__name__.lower().replace("plugin", "")
         )
         obj.plugin_name = plugin_name
@@ -66,7 +89,7 @@ class AIEngine:
             return
 
         try:
-            methods = obj.get_methods()
+            methods: list[dict[str, Any]] = obj.get_methods()
         except Exception as exc:
             logger.error(
                 "Failed to collect methods from plugin '%s': %s",
@@ -78,8 +101,8 @@ class AIEngine:
 
         for method in methods:
             method["plugin_name"] = plugin_name
-            stored = method["name"]
-            action_name = method.get("action_name")
+            stored: Any = method["name"]
+            action_name: Optional[str] = method.get("action_name")
             if not action_name:
                 action_name = stored.__name__ if callable(stored) else str(stored)
                 method["action_name"] = action_name
@@ -98,15 +121,18 @@ class AIEngine:
         description: str,
         name: Optional[str] = None,
     ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-        def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
-            action_name = name or func.__name__
+        """Decorator that registers a function as an engine action with metadata."""
 
-            sig = inspect.signature(func)
+        def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+            """Register the wrapped callable in the engine metadata registry."""
+            action_name: str = name or func.__name__
+
+            sig: inspect.Signature = inspect.signature(func)
             args_types: dict[str, str] = {}
             for param_name, param in sig.parameters.items():
                 if param_name in ["args", "kwargs", "self"]:
                     continue
-                p_type = (
+                p_type: Any = (
                     param.annotation
                     if param.annotation != inspect.Parameter.empty
                     else str
@@ -128,11 +154,12 @@ class AIEngine:
         return decorator
 
     def get_current_global_context(self) -> dict[str, Any]:
+        """Collect the live state from all registered plugins into one context map."""
         global_context: dict[str, Any] = {}
         for name, plugin in self.plugins.items():
             if hasattr(plugin, "get_live_context"):
                 try:
-                    live_ctx = plugin.get_live_context()
+                    live_ctx: Any = plugin.get_live_context()
                 except Exception as exc:
                     logger.error(
                         "Failed to read live context from plugin '%s': %s",
@@ -146,11 +173,13 @@ class AIEngine:
         return global_context
 
     async def run_engine(self, user_prompt: str) -> List[Dict[str, Any]]:
+        """Execute the pipeline for a prompt and return the action results."""
+        self.orchestrator.breaker_circus.check_status()
         logger.info("Engine run started for prompt: %s", user_prompt)
-        current_context = self.get_current_global_context()
+        current_context: dict[str, Any] = self.get_current_global_context()
 
         try:
-            data_for_execute = await self.orchestrator.run_pipeline(
+            data_for_execute: list[dict[str, Any]] = await self.orchestrator.run_pipeline(
                 user_prompt, current_context
             )
         except Exception as exc:
@@ -160,27 +189,29 @@ class AIEngine:
         results: List[Dict[str, Any]] = []
 
         for data in data_for_execute:
-            target_func = data.get("method")
-            args = data.get("args", {})
-            action_name = data.get("action_name")
+            target_func: Any = data.get("method")
+            args: dict[str, Any] = data.get("args", {})
+            action_name: Optional[str] = data.get("action_name")
 
             if isinstance(target_func, str):
                 target_func = self.actions.get(target_func)
 
             if not target_func or not callable(target_func):
                 logger.error(
-                    "Action execution aborted: '%s' is not a registered callable function in memory", 
-                    action_name
+                    "Action execution aborted: '%s' is not a registered callable function in memory",
+                    action_name,
                 )
                 continue
 
             try:
-                if inspect.iscoroutinefunction(target_func):
-                    res = await target_func(**args)
+                if "result" in data:
+                    result = data["result"]
+                elif inspect.iscoroutinefunction(target_func):
+                    result = await target_func(**args)
                 else:
-                    res = target_func(**args)
-                    
-                results.append({"action": action_name, "result": res})
+                    result = target_func(**args)
+
+                results.append({"action": action_name, "result": result})
                 logger.info("Action '%s' completed successfully", action_name)
             except Exception as exc:
                 logger.error(
@@ -192,11 +223,49 @@ class AIEngine:
                 continue
 
         logger.info("Engine run finished with %s result(s)", len(results))
-        return results
+        return results        
+
+    def schedule_task(
+        self,
+        prompt: str,
+        interval_seconds: float,
+        task_id: Optional[str] = None,
+    ) -> str:
+        """Register a recurring task that calls run_engine(prompt) every interval_seconds.
+
+        Returns the task_id that can be used to stop the task later.
+
+        Example::
+
+            engine.schedule_task("check disk usage and log if above 90%", interval_seconds=300)
+        """
+        return self.scheduler.schedule(
+            prompt=prompt,
+            interval_seconds=interval_seconds,
+            run_callback=self.run_engine,
+            task_id=task_id,
+        )
+
+    def unschedule_task(self, task_id: str) -> None:
+        """Stop and remove a scheduled task by its ID."""
+        self.scheduler.stop(task_id)
+
+    def list_scheduled_tasks(self) -> List[Dict[str, Any]]:
+        """Return info snapshots for all currently running scheduled tasks."""
+        return self.scheduler.list_tasks()
 
     async def delete_engine(self) -> None:
+        """Release orchestrator resources and clear all engine state."""
         try:
-            if hasattr(self.orchestrator.runtime_memory, "vector_list_cache"):
+            self.scheduler.stop_all()
+
+            if hasattr(self.orchestrator.runtime_memory, "search_engine"):
+                se = self.orchestrator.runtime_memory.search_engine
+                for k in getattr(se, "_ids", {}):
+                    se._ids[k] = []
+                for k in getattr(se, "_matrices", {}):
+                    se._matrices[k] = None
+            elif hasattr(self.orchestrator.runtime_memory, "vector_list_cache"):
                 for layer in self.orchestrator.runtime_memory.vector_list_cache:
                     self.orchestrator.runtime_memory.vector_list_cache[layer] = []
 
@@ -218,7 +287,8 @@ class AIEngine:
             raise
 
     def delete_plugin(self, name: str) -> None:
-        plugin_name = name.lower().replace("plugin", "") if name not in self.plugins else name
+        """Remove a plugin and all of its registered actions from the engine."""
+        plugin_name: str = name.lower().replace("plugin", "") if name not in self.plugins else name
         if plugin_name not in self.plugins:
             raise PluginForDeleteNotFoundError(
                 f"Plugin '{name}' for deleting is not found!"
@@ -229,10 +299,22 @@ class AIEngine:
         logger.info("Deleted plugin '%s'", plugin_name)
 
     def _remove_plugin_from_metadata(self, plugin_name: str) -> None:
+        """Delete all metadata entries associated with a plugin name."""
         self.cached_metadata = [
-            m for m in self.cached_metadata if m.get("plugin_name") != plugin_name
+            meta for meta in self.cached_metadata if meta.get("plugin_name") != plugin_name
         ]
 
         for action_name, func in list(self.actions.items()):
             if hasattr(func, "__self__") and getattr(func.__self__, "plugin_name", None) == plugin_name:
                 del self.actions[action_name]
+    
+    def stop_engine(self, reason: str = "Stopped by user"):
+        """Emergency brake"""
+        logger.warning("Emergancy brake %s", reason)
+        self.orchestrator.breaker_circus.emergency_halt(reason)
+        self.scheduler.stop_all()
+
+    def resume_engine(self):
+        """Resume emergency brake"""
+        self.orchestrator.breaker_circus.reset()
+        logger.info("Engine is repeared and now it's working")

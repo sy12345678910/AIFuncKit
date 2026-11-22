@@ -1,146 +1,327 @@
+"""
+Tests for AIEngine – the high-level public API.
+
+What we test here:
+  - register_plugin() adds methods to cached_metadata and actions.
+  - register_plugin() skips duplicate plugins (idempotent).
+  - delete_plugin() removes plugin data; raises PluginForDeleteNotFoundError for unknown.
+  - action() decorator registers a standalone function.
+  - get_current_global_context() aggregates live context from plugins.
+  - stop_engine() / resume_engine() interact with the circuit breaker.
+  - run_engine() calls orchestrator and executes returned callables.
+  - run_engine() returns [] on orchestrator failure (defensive).
+  - schedule_task / list_scheduled_tasks / unschedule_task round-trip.
+
+All LLM and embedding calls are mocked – no network or model needed.
+"""
 from __future__ import annotations
-import inspect
-import sys
-from pathlib import Path
+
+import asyncio
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
+import pytest_asyncio
 
-ROOT = Path(__file__).resolve().parents[1] / "src"
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-from engine import AIEngine
-from log_config import logger
-from sdk import BasePlugin, decription
+from exceptions.exceptions import PluginForDeleteNotFoundError
+from exceptions.pipeline_exceptions import CircuitBreakerOpenException
+from sdk import BasePlugin, describe
 
 
-@pytest.fixture
-def engine_instance() -> AIEngine:
-    engine = AIEngine(
-        ai_model="model-test",
-        context_window=1024,
-        db_path=Path("./tmp_engine_test.db"),
-        provider="ollama",
-        emb_model="dummy-model",
-        routing_model="vector",
-        verbose=False,
-        log_to_file=None,
-    )
-    yield engine
-    engine.orchestrator.runtime_memory.close = AsyncMock()
-    engine.cached_metadata.clear()
-    engine.actions.clear()
-    engine.plugins.clear()
+# ---------------------------------------------------------------------------
+# Minimal concrete plugin for testing
+# ---------------------------------------------------------------------------
+
+class DemoPlugin(BasePlugin):
+    plugin_name = "demo"
+
+    @describe("Say hello to someone")
+    def say_hello(self, name: str) -> str:
+        return f"Hello, {name}!"
+
+    @describe("Return a fixed number")
+    def fixed_number(self) -> int:
+        return 42
 
 
-@pytest.mark.asyncio
-async def test_initialize_calls_embedding_and_memory_init(engine_instance: AIEngine) -> None:
-    engine_instance.orchestrator.ensure_embedding_model = AsyncMock()
-    engine_instance.orchestrator.runtime_memory.init_and_load_cache = AsyncMock()
+# ---------------------------------------------------------------------------
+# Engine factory (patches away all heavy init)
+# ---------------------------------------------------------------------------
 
-    await engine_instance.initialize()
+def _make_engine(**overrides):
+    """Create AIEngine with all external dependencies stubbed out."""
+    with (
+        patch("engine.configure_logging"),
+        patch("engine.MasterOrchestrationEngine") as MockOrch,
+        patch("engine.SchedulerService") as MockSched,
+    ):
+        # Build a reusable mock orchestrator
+        orch = MagicMock()
+        orch.breaker_circus = MagicMock()
+        orch.breaker_circus.check_status = MagicMock()
+        orch.breaker_circus.emergency_halt = MagicMock()
+        orch.breaker_circus.reset = MagicMock()
+        orch.runtime_memory = AsyncMock()
+        orch.client = MagicMock()
+        orch.run_pipeline = AsyncMock(return_value=[])
+        MockOrch.return_value = orch
 
-    engine_instance.orchestrator.ensure_embedding_model.assert_awaited_once()
-    engine_instance.orchestrator.runtime_memory.init_and_load_cache.assert_awaited_once()
+        sched = MagicMock()
+        sched.schedule = MagicMock(return_value="task-123")
+        sched.list_tasks = MagicMock(return_value=[])
+        sched.stop = MagicMock()
+        sched.stop_all = MagicMock()
+        MockSched.return_value = sched
 
-
-def test_register_plugin_collects_methods_and_metadata(engine_instance: AIEngine) -> None:
-    class DemoPlugin(BasePlugin):
-        def __init__(self) -> None:
-            super().__init__()
-            self.plugin_name = "demo"
-
-        @decription("send demo message")
-        def ping(self, count: int, enabled: bool) -> str:
-            return f"{count}:{enabled}"
-
-    plugin = DemoPlugin()
-    engine_instance.register_plugin(plugin)
-
-    assert plugin.plugin_name == "demo"
-    assert "ping" in engine_instance.actions
-    assert any(item.get("plugin_name") == "demo" for item in engine_instance.cached_metadata)
-    assert engine_instance.plugins["demo"] is plugin
-
-
-def test_action_decorator_reflects_argument_types(engine_instance: AIEngine) -> None:
-    @engine_instance.action("do work", name="custom_action")
-    def sample(self, count: int, enabled: bool, ratio: float, *, extras: str = "x") -> str:
-        return "done"
-
-    metadata = next(item for item in engine_instance.cached_metadata if item["action_name"] == "custom_action")
-    assert metadata["args"] == {"count": "int", "enabled": "bool", "ratio": "float", "extras": "str"}
-    assert "self" not in metadata["args"]
+        from engine import AIEngine
+        engine = AIEngine(provider="ollama", **overrides)
+        engine._mock_orch = orch
+        engine._mock_sched = sched
+        return engine
 
 
-@pytest.mark.asyncio
-async def test_run_engine_executes_registered_callables_and_skips_invalid_ones(engine_instance: AIEngine) -> None:
-    async def async_worker(value: int) -> int:
-        return value + 1
+# ---------------------------------------------------------------------------
+# Plugin registration
+# ---------------------------------------------------------------------------
 
-    def sync_worker(value: int) -> int:
-        return value + 2
+class TestRegisterPlugin:
+    def test_register_adds_methods_to_metadata(self):
+        engine = _make_engine()
+        plugin = DemoPlugin()
+        engine.register_plugin(plugin)
+        action_names = [m["action_name"] for m in engine.cached_metadata]
+        assert "say_hello" in action_names
+        assert "fixed_number" in action_names
 
-    engine_instance.actions["async_worker"] = async_worker
-    engine_instance.actions["sync_worker"] = sync_worker
-    engine_instance.orchestrator.run_pipeline = AsyncMock(
-        return_value=[
-            {"method": async_worker, "action_name": "async_worker", "args": {"value": 10}},
-            {"method": sync_worker, "action_name": "sync_worker", "args": {"value": 5}},
-            {"method": "missing", "action_name": "missing", "args": {}},
-        ]
-    )
+    def test_register_adds_to_actions(self):
+        engine = _make_engine()
+        engine.register_plugin(DemoPlugin())
+        assert "say_hello" in engine.actions
+        assert "fixed_number" in engine.actions
 
-    results = await engine_instance.run_engine("do work")
+    def test_register_plugin_idempotent(self):
+        engine = _make_engine()
+        engine.register_plugin(DemoPlugin())
+        count_before = len(engine.cached_metadata)
+        engine.register_plugin(DemoPlugin())   # duplicate – should skip
+        assert len(engine.cached_metadata) == count_before
 
-    assert results[0]["action"] == "async_worker"
-    assert results[0]["result"] == 11
-    assert results[1]["action"] == "sync_worker"
-    assert results[1]["result"] == 7
-    assert len(results) == 2
-
-
-@pytest.mark.asyncio
-async def test_run_engine_handles_exception_in_one_action_without_stopping_the_queue(engine_instance: AIEngine) -> None:
-    async def boom(value: int) -> int:
-        raise RuntimeError("boom")
-
-    async def ok(value: int) -> int:
-        return value
-
-    engine_instance.actions["boom"] = boom
-    engine_instance.actions["ok"] = ok
-    engine_instance.orchestrator.run_pipeline = AsyncMock(
-        return_value=[
-            {"method": boom, "action_name": "boom", "args": {"value": 1}},
-            {"method": ok, "action_name": "ok", "args": {"value": 2}},
-        ]
-    )
-
-    with patch.object(logger, "error") as mock_error:
-        results = await engine_instance.run_engine("fail once")
-
-    assert len(results) == 1
-    assert results[0]["action"] == "ok"
-    assert results[0]["result"] == 2
-    assert mock_error.called
+    def test_plugin_stored_in_plugins_dict(self):
+        engine = _make_engine()
+        p = DemoPlugin()
+        engine.register_plugin(p)
+        assert "demo" in engine.plugins
 
 
-def test_remove_plugin_from_metadata_clears_actions_and_metadata(engine_instance: AIEngine) -> None:
-    class DemoPlugin(BasePlugin):
-        def __init__(self) -> None:
-            super().__init__()
-            self.plugin_name = "demo"
+# ---------------------------------------------------------------------------
+# Plugin deletion
+# ---------------------------------------------------------------------------
 
-        @decription("get status")
-        def ping(self, count: int) -> int:
-            return count
+class TestDeletePlugin:
+    def test_delete_removes_plugin(self):
+        engine = _make_engine()
+        engine.register_plugin(DemoPlugin())
+        engine.delete_plugin("demo")
+        assert "demo" not in engine.plugins
 
-    plugin = DemoPlugin()
-    engine_instance.register_plugin(plugin)
-    engine_instance._remove_plugin_from_metadata("demo")
+    def test_delete_nonexistent_raises(self):
+        engine = _make_engine()
+        with pytest.raises(PluginForDeleteNotFoundError):
+            engine.delete_plugin("ghost_plugin")
 
-    assert all(item.get("plugin_name") != "demo" for item in engine_instance.cached_metadata)
-    assert "ping" not in engine_instance.actions
-    assert "demo" in engine_instance.plugins
+    def test_delete_with_plugin_suffix_in_name(self):
+        """delete_plugin strips trailing 'plugin' from name before lookup."""
+        engine = _make_engine()
+        engine.register_plugin(DemoPlugin())
+        # 'demoplugin' → normalised to 'demo'
+        engine.delete_plugin("demoplugin")
+        assert "demo" not in engine.plugins
+
+
+# ---------------------------------------------------------------------------
+# @action decorator
+# ---------------------------------------------------------------------------
+
+class TestActionDecorator:
+    def test_action_decorator_registers_function(self):
+        engine = _make_engine()
+
+        @engine.action(description="Ping the service")
+        def ping() -> str:
+            return "pong"
+
+        assert "ping" in engine.actions
+        assert engine.actions["ping"] is ping
+
+    def test_action_decorator_with_custom_name(self):
+        engine = _make_engine()
+
+        @engine.action(description="Pong back", name="my_pong")
+        def pong() -> str:
+            return "pong"
+
+        assert "my_pong" in engine.actions
+
+    def test_action_decorator_extracts_arg_types(self):
+        engine = _make_engine()
+
+        @engine.action(description="Add numbers")
+        def add(x: int, y: int) -> int:
+            return x + y
+
+        meta = next(m for m in engine.cached_metadata if m["action_name"] == "add")
+        assert meta["args"]["x"] == "int"
+        assert meta["args"]["y"] == "int"
+
+
+# ---------------------------------------------------------------------------
+# get_current_global_context
+# ---------------------------------------------------------------------------
+
+class TestGetGlobalContext:
+    def test_aggregates_plugin_contexts(self):
+        engine = _make_engine()
+        p = DemoPlugin()
+        p.update_context("last_greeting", "hi")
+        engine.register_plugin(p)
+
+        ctx = engine.get_current_global_context()
+        assert "demo" in ctx
+        assert ctx["demo"]["last_greeting"] == "hi"
+
+    def test_empty_when_no_plugins(self):
+        engine = _make_engine()
+        assert engine.get_current_global_context() == {}
+
+
+# ---------------------------------------------------------------------------
+# Circuit breaker integration via stop/resume
+# ---------------------------------------------------------------------------
+
+class TestStopResume:
+    def test_stop_engine_calls_emergency_halt(self):
+        engine = _make_engine()
+        engine.stop_engine("test reason")
+        engine._mock_orch.breaker_circus.emergency_halt.assert_called_once()
+
+    def test_stop_engine_calls_stop_all_scheduler(self):
+        engine = _make_engine()
+        engine.stop_engine()
+        engine._mock_sched.stop_all.assert_called_once()
+
+    def test_resume_engine_calls_reset(self):
+        engine = _make_engine()
+        engine.resume_engine()
+        engine._mock_orch.breaker_circus.reset.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# run_engine
+# ---------------------------------------------------------------------------
+
+class TestRunEngine:
+    @pytest.mark.asyncio
+    async def test_run_engine_executes_returned_callable(self):
+        engine = _make_engine()
+
+        def greet(name: str) -> str:
+            return f"Hi {name}"
+
+        engine._mock_orch.run_pipeline = AsyncMock(
+            return_value=[
+                {"method": greet, "args": {"name": "Alice"}, "action_name": "greet"}
+            ]
+        )
+        results = await engine.run_engine("greet Alice")
+        assert results[0]["action"] == "greet"
+        assert results[0]["result"] == "Hi Alice"
+
+    @pytest.mark.asyncio
+    async def test_run_engine_resolves_action_by_name(self):
+        """method stored as string key → looked up in self.actions."""
+        engine = _make_engine()
+
+        def my_func() -> str:
+            return "done"
+
+        engine.actions["my_func"] = my_func
+        engine._mock_orch.run_pipeline = AsyncMock(
+            return_value=[
+                {"method": "my_func", "args": {}, "action_name": "my_func"}
+            ]
+        )
+        results = await engine.run_engine("run my_func")
+        assert results[0]["result"] == "done"
+
+    @pytest.mark.asyncio
+    async def test_run_engine_returns_empty_list_on_pipeline_failure(self):
+        engine = _make_engine()
+        engine._mock_orch.run_pipeline = AsyncMock(side_effect=RuntimeError("boom"))
+        results = await engine.run_engine("some prompt")
+        assert results == []
+
+    @pytest.mark.asyncio
+    async def test_run_engine_skips_missing_callable(self):
+        """If action_name points to nothing registered, entry is skipped (no crash)."""
+        engine = _make_engine()
+        engine._mock_orch.run_pipeline = AsyncMock(
+            return_value=[
+                {"method": None, "args": {}, "action_name": "ghost"}
+            ]
+        )
+        results = await engine.run_engine("call ghost")
+        assert results == []
+
+    @pytest.mark.asyncio
+    async def test_run_engine_uses_precomputed_result(self):
+        """If 'result' key already in data dict, it must be used as-is."""
+        engine = _make_engine()
+        engine._mock_orch.run_pipeline = AsyncMock(
+            return_value=[
+                {
+                    "method": lambda: "should not run",
+                    "args": {},
+                    "action_name": "cached",
+                    "result": "pre-cached value",
+                }
+            ]
+        )
+        results = await engine.run_engine("use cached")
+        assert results[0]["result"] == "pre-cached value"
+
+    @pytest.mark.asyncio
+    async def test_run_engine_supports_async_action(self):
+        engine = _make_engine()
+
+        async def async_action() -> str:
+            return "async result"
+
+        engine._mock_orch.run_pipeline = AsyncMock(
+            return_value=[
+                {"method": async_action, "args": {}, "action_name": "async_action"}
+            ]
+        )
+        results = await engine.run_engine("run async")
+        assert results[0]["result"] == "async result"
+
+
+# ---------------------------------------------------------------------------
+# Scheduler integration
+# ---------------------------------------------------------------------------
+
+class TestScheduler:
+    def test_schedule_task_returns_task_id(self):
+        engine = _make_engine()
+        tid = engine.schedule_task("check disk", interval_seconds=60)
+        assert tid == "task-123"
+
+    def test_list_scheduled_tasks_delegates(self):
+        engine = _make_engine()
+        engine._mock_sched.list_tasks.return_value = [{"id": "task-123"}]
+        tasks = engine.list_scheduled_tasks()
+        assert tasks[0]["id"] == "task-123"
+
+    def test_unschedule_task_calls_stop(self):
+        engine = _make_engine()
+        engine.unschedule_task("task-123")
+        engine._mock_sched.stop.assert_called_once_with("task-123")
