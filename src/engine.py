@@ -25,9 +25,12 @@ class AIEngine:
         verbose: Optional[bool] = None,
         log_to_file: Optional[str] = "aifunckit.log",
         log_level: Optional[str | int] = None,
-        failure_threashold: int = 3,
+        failure_threshold: int = 3,
         prompt_injection_protection: Optional[List[str]] = None,
-        max_prompt_length: int = 4096
+        max_prompt_length: int = 4096,
+        guard_model_path: Optional[str] = None,
+        guard_tokenizer_path: Optional[str] = None,
+        guard_threshold: float = 0.85,
     ) -> None:
         """Initialize the engine, logging, and orchestrator with default runtime settings."""
         configure_logging(verbose=verbose, log_to_file=log_to_file, log_level=log_level)
@@ -47,9 +50,12 @@ class AIEngine:
             db_path=str(db_path),
             emb_model=emb_model,
             routing_model=routing_model,
-            failure_threashold = failure_threashold,
+            failure_threshold=failure_threshold,
             prompt_injection_protection=prompt_injection_protection,
-            max_prompt_length=max_prompt_length
+            max_prompt_length=max_prompt_length,
+            guard_model_path=guard_model_path,
+            guard_tokenizer_path=guard_tokenizer_path,
+            guard_threshold=guard_threshold,
         )
         self.scheduler: SchedulerService = SchedulerService()
         logger.info(

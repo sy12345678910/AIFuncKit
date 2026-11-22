@@ -23,7 +23,7 @@ async def get_data_generated_by_model(
 
     try:
         match provider:
-            case "hf" | "hugging_face":
+            case "hf" | "hugging_face" | "hugging face":
                 from model_provide import hf as hf_provider
 
                 response = await hf_provider.generate_with_hf_on_cloud(

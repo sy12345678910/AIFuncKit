@@ -4,15 +4,15 @@ import inspect
 from abc import ABC
 from typing import Any, Callable, Optional
 
-from log_config import logger
+from src.log_config import logger
 
 
 class BasePlugin(ABC):
     """Base class for all runtime plugins that expose action methods."""
 
-    type: str
+    type: Optional[str]
     plugin_name: str
-    file: str
+    
 
     def __init__(self) -> None:
         """Create an empty live-context dictionary for dynamic plugin state."""
@@ -71,7 +71,7 @@ class BasePlugin(ABC):
         self.live_context[key] = value
 
     update_contetx = update_context
-    update_contexti = update_context
+    update_context = update_context
 
 
 def decription(text: str) -> Callable[[Callable[..., Any]], Callable[..., Any]]:

@@ -34,9 +34,12 @@ class MasterOrchestrationEngine:
         db_path: str = "aie_runtime.db",
         emb_model: Any = "sentence_transformers/paraphrase-multilingual-MiniLM-L12-v2",
         routing_model: str = "vector",
-        failure_threashold: int = 3,
+        failure_threshold: int = 3,
         prompt_injection_protection: Optional[List[str]] = None,
-        max_prompt_length: int = 4096
+        max_prompt_length: int = 4096,
+        guard_model_path: Optional[str] = None,
+        guard_tokenizer_path: Optional[str] = None,
+        guard_threshold: float = 0.85,
     ) -> None:
         self.runtime_memory = AIRAGMemoryManager(db_path=db_path)
         self.llm_config = LLMConfig(
@@ -59,10 +62,13 @@ class MasterOrchestrationEngine:
         self.prompt_injection_protection = prompt_injection_protection
         self.max_prompt_length = max_prompt_length
         self.sanitizer = PromptSanitizer(
+            model_path=guard_model_path,
+            tokenizer_path=guard_tokenizer_path,
             custom_patterns=prompt_injection_protection,
             max_length=max_prompt_length,
+            threshold=guard_threshold,
         )
-        self.breaker_circus = BreakCircusService(failure_threshold=failure_threashold)
+        self.breaker_circus = BreakCircusService(failure_threshold=failure_threshold)
         self.client: Any = None
         
 

@@ -16,9 +16,6 @@ from orchestrator.general_methods import maybe_await, metadata_action_name
 class PluginRoutingService:
     """Select the plugin metadata record that best matches a decomposed task."""
 
-    # Minimum cosine similarity required to accept a vector routing match.
-    # Tasks below this threshold are rejected with PluginNotFoundError rather
-    # than blindly falling back to the first registered action.
     MIN_VECTOR_SIMILARITY: float = 0.25
 
     def __init__(self, routing_model: str = "vector") -> None:
