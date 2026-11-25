@@ -17,8 +17,8 @@ import pytest_asyncio
 import numpy as np
 from unittest.mock import AsyncMock, MagicMock
 
-from orchestrator.services.plugin_routing import PluginRoutingService
-from exceptions.exceptions import PluginNotFoundError, RoutingModeDoesNotExist
+from aifunckit._internal.orchestrator.services.plugin_routing import PluginRoutingService
+from aifunckit.exceptions.exceptions import PluginNotFoundError, RoutingModeDoesNotExist
 
 
 # ---------------------------------------------------------------------------
@@ -144,7 +144,7 @@ class TestRouteVector:
 
     @pytest.mark.asyncio
     async def test_vector_routing_selects_best_match(self, router):
-        from memory.vector import normalize_vector
+        from aifunckit._internal.memory.vector import normalize_vector
 
         vec_a = normalize_vector(np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32))
         vec_b = normalize_vector(np.array([0.0, 1.0, 0.0, 0.0], dtype=np.float32))
@@ -171,7 +171,7 @@ class TestRouteVector:
     @pytest.mark.asyncio
     async def test_vector_routing_raises_when_similarity_too_low(self, router):
         """All zeros similarity should be below MIN_VECTOR_SIMILARITY."""
-        from memory.vector import normalize_vector
+        from aifunckit._internal.memory.vector import normalize_vector
 
         # Orthogonal – dot product = 0 < 0.25
         vec_desc = normalize_vector(np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float32))

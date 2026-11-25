@@ -14,7 +14,7 @@ Covers:
 from __future__ import annotations
 
 import pytest
-from sdk import BasePlugin, describe, decription
+from aifunckit.sdk import BasePlugin, describe, decription
 
 
 # ---------------------------------------------------------------------------

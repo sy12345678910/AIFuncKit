@@ -14,8 +14,8 @@ Covers:
 from __future__ import annotations
 
 import pytest
-from orchestrator.services.break_circus import BreakCircusService
-from exceptions.pipeline_exceptions import CircuitBreakerOpenException
+from aifunckit._internal.orchestrator.services.break_circus import BreakCircusService
+from aifunckit.exceptions.pipeline_exceptions import CircuitBreakerOpenException
 
 
 # ---------------------------------------------------------------------------
@@ -138,3 +138,61 @@ def test_check_status_ok_after_reset(breaker):
         pass
     breaker.reset()
     breaker.check_status()   # must not raise
+
+
+# ---------------------------------------------------------------------------
+# MasterOrchestrationEngine Integration
+# ---------------------------------------------------------------------------
+from unittest.mock import AsyncMock, MagicMock, patch
+import numpy as np
+from aifunckit._internal.orchestrator.pipeline import MasterOrchestrationEngine
+from aifunckit._internal.orchestrator.pipelines.sequential import SequentialPipeline
+
+
+def test_orchestrator_circus_breaker_aliases():
+    with patch("aifunckit._internal.orchestrator.pipeline.AIRAGMemoryManager"), patch("aifunckit._internal.orchestrator.pipeline.EmbeddingService"):
+        engine = MasterOrchestrationEngine(cached_metadata=[], failure_threshold=5)
+        assert engine.breaker_circus.failure_threshold == 5
+        assert engine.circus_breaker is engine.breaker_circus
+        assert engine.circuit_breaker is engine.breaker_circus
+
+        new_breaker = BreakCircusService(failure_threshold=2)
+        engine.circus_breaker = new_breaker
+        assert engine.breaker_circus is new_breaker
+        assert engine.circuit_breaker is new_breaker
+
+
+@pytest.mark.asyncio
+async def test_run_pipeline_blocked_when_circuit_breaker_open():
+    with patch("aifunckit._internal.orchestrator.pipeline.AIRAGMemoryManager"), patch("aifunckit._internal.orchestrator.pipeline.EmbeddingService"):
+        engine = MasterOrchestrationEngine(cached_metadata=[])
+        engine.circus_breaker.is_open = True
+
+        with pytest.raises(CircuitBreakerOpenException):
+            await engine.run_pipeline("test prompt")
+
+
+@pytest.mark.asyncio
+async def test_run_pipeline_passes_breaker_to_pipeline():
+    with patch("aifunckit._internal.orchestrator.pipeline.AIRAGMemoryManager"), patch("aifunckit._internal.orchestrator.pipeline.EmbeddingService"):
+        engine = MasterOrchestrationEngine(cached_metadata=[])
+
+        mock_pipeline = MagicMock(spec=SequentialPipeline)
+        mock_pipeline.validate_state = MagicMock()
+        mock_pipeline.execute = AsyncMock()
+
+        passed_breaker = None
+        def mock_pipeline_cls(**kwargs):
+            nonlocal passed_breaker
+            passed_breaker = kwargs.get("circuit_breaker")
+            return mock_pipeline
+
+        with patch.object(engine.topology_resolver, "resolve", return_value=mock_pipeline_cls):
+            async def fake_decompose(ctx):
+                ctx.decomposed_tasks = ["task 1"]
+                return np.zeros(10, dtype=np.float32)
+            engine.decomposition.decompose = AsyncMock(side_effect=fake_decompose)
+
+            await engine.run_pipeline("test prompt")
+            assert passed_breaker is engine.circus_breaker
+

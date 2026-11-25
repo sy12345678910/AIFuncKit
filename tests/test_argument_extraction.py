@@ -21,7 +21,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import pytest_asyncio
 
-from orchestrator.services.argument_extraction import ArgumentExtractionService
+from aifunckit._internal.orchestrator.services.argument_extraction import ArgumentExtractionService
 
 
 # ---------------------------------------------------------------------------
@@ -29,7 +29,7 @@ from orchestrator.services.argument_extraction import ArgumentExtractionService
 # ---------------------------------------------------------------------------
 
 def _llm_config():
-    from schemas.orchestrator_schemas import LLMConfig
+    from aifunckit._internal.schemas.orchestrator_schemas import LLMConfig
     return LLMConfig(provider="ollama", model_name="test-model", context_window=1024)
 
 
@@ -56,7 +56,7 @@ class TestArgumentExtraction:
     @pytest.mark.asyncio
     async def test_no_expected_args_skips_llm(self, service):
         with patch(
-            "orchestrator.services.argument_extraction.get_data_generated_by_model"
+            "aifunckit._internal.orchestrator.services.argument_extraction.get_data_generated_by_model"
         ) as mock_llm:
             result = await service.extract(
                 task="do something",
@@ -74,7 +74,7 @@ class TestArgumentExtraction:
     async def test_dict_response_returned_directly(self, service):
         payload = {"message": "Hello world", "level": "critical"}
         with patch(
-            "orchestrator.services.argument_extraction.get_data_generated_by_model",
+            "aifunckit._internal.orchestrator.services.argument_extraction.get_data_generated_by_model",
             new=AsyncMock(return_value=payload),
         ):
             result = await service.extract(
@@ -92,7 +92,7 @@ class TestArgumentExtraction:
     async def test_json_string_response_is_parsed(self, service):
         payload = {"volume": 75}
         with patch(
-            "orchestrator.services.argument_extraction.get_data_generated_by_model",
+            "aifunckit._internal.orchestrator.services.argument_extraction.get_data_generated_by_model",
             new=AsyncMock(return_value=json.dumps(payload)),
         ):
             result = await service.extract(
@@ -118,7 +118,7 @@ class TestArgumentExtraction:
     @pytest.mark.asyncio
     async def test_unparseable_response_returns_empty(self, service, bad_response):
         with patch(
-            "orchestrator.services.argument_extraction.get_data_generated_by_model",
+            "aifunckit._internal.orchestrator.services.argument_extraction.get_data_generated_by_model",
             new=AsyncMock(return_value=bad_response),
         ):
             result = await service.extract(
@@ -135,7 +135,7 @@ class TestArgumentExtraction:
     @pytest.mark.asyncio
     async def test_llm_exception_returns_empty(self, service):
         with patch(
-            "orchestrator.services.argument_extraction.get_data_generated_by_model",
+            "aifunckit._internal.orchestrator.services.argument_extraction.get_data_generated_by_model",
             new=AsyncMock(side_effect=RuntimeError("connection refused")),
         ):
             result = await service.extract(
@@ -159,7 +159,7 @@ class TestArgumentExtraction:
             return {"n": 5}
 
         with patch(
-            "orchestrator.services.argument_extraction.get_data_generated_by_model",
+            "aifunckit._internal.orchestrator.services.argument_extraction.get_data_generated_by_model",
             new=AsyncMock(side_effect=_fake_llm),
         ):
             await service.extract(

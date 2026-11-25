@@ -23,9 +23,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import pytest_asyncio
 
-from exceptions.exceptions import PluginForDeleteNotFoundError
-from exceptions.pipeline_exceptions import CircuitBreakerOpenException
-from sdk import BasePlugin, describe
+from aifunckit.exceptions.exceptions import PluginForDeleteNotFoundError
+from aifunckit.exceptions.pipeline_exceptions import CircuitBreakerOpenException
+from aifunckit.sdk import BasePlugin, describe
 
 
 # ---------------------------------------------------------------------------
@@ -51,9 +51,9 @@ class DemoPlugin(BasePlugin):
 def _make_engine(**overrides):
     """Create AIEngine with all external dependencies stubbed out."""
     with (
-        patch("engine.configure_logging"),
-        patch("engine.MasterOrchestrationEngine") as MockOrch,
-        patch("engine.SchedulerService") as MockSched,
+        patch("aifunckit.engine.configure_logging"),
+        patch("aifunckit.engine.MasterOrchestrationEngine") as MockOrch,
+        patch("aifunckit.engine.SchedulerService") as MockSched,
     ):
         # Build a reusable mock orchestrator
         orch = MagicMock()
@@ -73,7 +73,7 @@ def _make_engine(**overrides):
         sched.stop_all = MagicMock()
         MockSched.return_value = sched
 
-        from engine import AIEngine
+        from aifunckit.engine import AIEngine
         engine = AIEngine(provider="ollama", **overrides)
         engine._mock_orch = orch
         engine._mock_sched = sched
