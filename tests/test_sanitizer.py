@@ -13,8 +13,8 @@ Covers:
 from __future__ import annotations
 
 import pytest
-from orchestrator.services.sanitizer import PromptSanitizer
-from exceptions.prompt_exeption import PromptInjectionError, TooLongPromptError
+from aifunckit._internal.orchestrator.services.sanitizer import PromptSanitizer
+from aifunckit.exceptions.prompt_exeption import PromptInjectionError, TooLongPromptError
 
 
 # ---------------------------------------------------------------------------

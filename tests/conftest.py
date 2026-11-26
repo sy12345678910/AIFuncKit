@@ -69,8 +69,8 @@ def pytest_configure(config):
 @pytest.fixture()
 def make_context():
     """Factory that returns a PipelineContext populated with fakes."""
-    from schemas.pipeline_context import PipelineContext
-    from schemas.orchestrator_schemas import (
+    from aifunckit._internal.schemas.pipeline_context import PipelineContext
+    from aifunckit._internal.schemas.orchestrator_schemas import (
         LLMConfig,
         MetadataForLLM,
         ParamsForExecution,

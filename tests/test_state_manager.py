@@ -11,7 +11,7 @@ Covers:
 from __future__ import annotations
 
 import pytest
-from orchestrator.services.state_manager import StateManagerService
+from aifunckit._internal.orchestrator.services.state_manager import StateManagerService
 
 
 # ---------------------------------------------------------------------------

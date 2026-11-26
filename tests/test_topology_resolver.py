@@ -20,13 +20,13 @@ from __future__ import annotations
 import pytest
 
 # Import AFTER conftest has patched sys.path
-from orchestrator.topology_resolver import TopologyResolver
-from orchestrator.pipelines.sequential import SequentialPipeline
-from orchestrator.pipelines.parallel import ParallelPipeline
-from orchestrator.pipelines.conditional import ConditionalPipeline
-from orchestrator.pipelines.loop import LoopPipeline
-from orchestrator.pipelines.timeout import TimeoutPipeline
-from orchestrator.pipelines.for_each_loop import ForEachLoopPipeline
+from aifunckit._internal.orchestrator.topology_resolver import TopologyResolver
+from aifunckit._internal.orchestrator.pipelines.sequential import SequentialPipeline
+from aifunckit._internal.orchestrator.pipelines.parallel import ParallelPipeline
+from aifunckit._internal.orchestrator.pipelines.conditional import ConditionalPipeline
+from aifunckit._internal.orchestrator.pipelines.loop import LoopPipeline
+from aifunckit._internal.orchestrator.pipelines.timeout import TimeoutPipeline
+from aifunckit._internal.orchestrator.pipelines.for_each_loop import ForEachLoopPipeline
 
 
 # ---------------------------------------------------------------------------
