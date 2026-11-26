@@ -106,6 +106,7 @@ class ArgumentExtractionService:
 
                 cleaned_json = self._clean_json_response(response)
                 validated_args = dynamic_schema.model_validate_json(cleaned_json)
+                logger.info("Successfully extracted arguments for task '%s': %s", task, validated_args)
                 return validated_args.model_dump()
 
             except (ValidationError, json.JSONDecodeError, TypeError) as exc:

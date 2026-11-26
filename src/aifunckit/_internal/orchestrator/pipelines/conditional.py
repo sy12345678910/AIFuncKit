@@ -57,11 +57,16 @@ class ConditionalPipeline(BasePipeline):
         from aifunckit._internal.orchestrator.pipelines.sequential import SequentialPipeline
 
         original_tasks = context.decomposed_tasks
-        context.decomposed_tasks = list(tasks)
-        await SequentialPipeline(
-            routing=self.routing,
-            extraction=self.extraction,
-            execution=self.execution,
-            circuit_breaker=self.circuit_breaker,
-        ).execute(context)
-        context.decomposed_tasks = original_tasks
+        try:
+            context.decomposed_tasks = list(tasks)
+            await SequentialPipeline(
+                routing=self.routing,
+                extraction=self.extraction,
+                execution=self.execution,
+                circuit_breaker=self.circuit_breaker,
+            ).execute(context)
+        except Exception as exc:
+            logger.error("Conditional branch execution failed: %s", exc, exc_info=True)
+            raise
+        finally:
+            context.decomposed_tasks = original_tasks

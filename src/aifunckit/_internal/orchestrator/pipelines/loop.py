@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from aifunckit._internal.log_config import logger
 from aifunckit._internal.schemas.pipeline_context import PipelineContext
 from aifunckit._internal.orchestrator.pipelines.base import BasePipeline
 from aifunckit._internal.orchestrator.pipelines.import_strategies.loop import LoopExecutionStrategy
@@ -30,12 +31,18 @@ class LoopPipeline(BasePipeline):
         iterations = int(loop_node.get("iterations") or loop_node.get("repetitions") or 1)
 
         original_tasks = context.decomposed_tasks
-        for _ in range(max(0, iterations)):
-            context.decomposed_tasks = list(body)
-            await SequentialPipeline(
-                routing=self.routing,
-                extraction=self.extraction,
-                execution=self.execution,
-                circuit_breaker=self.circuit_breaker,
-            ).execute(context)
-        context.decomposed_tasks = original_tasks
+        try:
+            for idx in range(max(0, iterations)):
+                logger.debug("Loop iteration %d/%d", idx + 1, iterations)
+                context.decomposed_tasks = list(body)
+                await SequentialPipeline(
+                    routing=self.routing,
+                    extraction=self.extraction,
+                    execution=self.execution,
+                    circuit_breaker=self.circuit_breaker,
+                ).execute(context)
+        except Exception as exc:
+            logger.error("LoopPipeline failed during iteration: %s", exc, exc_info=True)
+            raise
+        finally:
+            context.decomposed_tasks = original_tasks

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from aifunckit._internal.log_config import logger
 from aifunckit._internal.schemas.pipeline_context import PipelineContext
 from aifunckit._internal.orchestrator.pipelines.base import BasePipeline
 from aifunckit._internal.orchestrator.pipelines.import_strategies.for_each_loop import ForEachLoopExecutionStrategy
@@ -61,40 +62,45 @@ class ForEachLoopPipeline(BasePipeline):
         original_tasks = context.decomposed_tasks
         original_item_val = context.environment_state.get(item_var)
 
-        for item in resolved_items:
-            # Expose the current item in environment state
-            context.environment_state[item_var] = item
+        try:
+            for item in resolved_items:
+                logger.debug("ForEach iteration for %s=%r", item_var, item)
+                # Expose the current item in environment state
+                context.environment_state[item_var] = item
 
-            # Substitute '{item}' placeholder in task descriptions if present
-            iter_tasks: list[Any] = []
-            for t in body:
-                if isinstance(t, str):
-                    replaced = t.replace("{item}", str(item)).replace(f"{{{item_var}}}", str(item))
-                    iter_tasks.append(replaced)
-                elif isinstance(t, dict):
-                    replaced_dict = dict(t)
-                    if isinstance(replaced_dict.get("task"), str):
-                        replaced_dict["task"] = (
-                            replaced_dict["task"]
-                            .replace("{item}", str(item))
-                            .replace(f"{{{item_var}}}", str(item))
-                        )
-                    iter_tasks.append(replaced_dict)
-                else:
-                    iter_tasks.append(t)
+                # Substitute '{item}' placeholder in task descriptions if present
+                iter_tasks: list[Any] = []
+                for t in body:
+                    if isinstance(t, str):
+                        replaced = t.replace("{item}", str(item)).replace(f"{{{item_var}}}", str(item))
+                        iter_tasks.append(replaced)
+                    elif isinstance(t, dict):
+                        replaced_dict = dict(t)
+                        if isinstance(replaced_dict.get("task"), str):
+                            replaced_dict["task"] = (
+                                replaced_dict["task"]
+                                .replace("{item}", str(item))
+                                .replace(f"{{{item_var}}}", str(item))
+                            )
+                        iter_tasks.append(replaced_dict)
+                    else:
+                        iter_tasks.append(t)
 
-            context.decomposed_tasks = iter_tasks
-            await SequentialPipeline(
-                routing=self.routing,
-                extraction=self.extraction,
-                execution=self.execution,
-                circuit_breaker=self.circuit_breaker,
-            ).execute(context)
+                context.decomposed_tasks = iter_tasks
+                await SequentialPipeline(
+                    routing=self.routing,
+                    extraction=self.extraction,
+                    execution=self.execution,
+                    circuit_breaker=self.circuit_breaker,
+                ).execute(context)
+        except Exception as exc:
+            logger.error("ForEachLoopPipeline failed: %s", exc, exc_info=True)
+            raise
+        finally:
+            # Restore original state
+            if original_item_val is not None:
+                context.environment_state[item_var] = original_item_val
+            else:
+                context.environment_state.pop(item_var, None)
 
-        # Restore original state
-        if original_item_val is not None:
-            context.environment_state[item_var] = original_item_val
-        else:
-            context.environment_state.pop(item_var, None)
-
-        context.decomposed_tasks = original_tasks
+            context.decomposed_tasks = original_tasks

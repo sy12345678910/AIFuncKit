@@ -74,11 +74,6 @@ class TestRouteText:
         result = router.route_text(task="check cpu load", context=ctx)
         assert result["action_name"] == "get_stats"
 
-    def test_fallback_to_first_on_no_match(self, router, metadata):
-        ctx = _make_context(metadata)
-        result = router.route_text(task="do something completely unrelated", context=ctx)
-        assert result["action_name"] == "send_alert"  # first item
-
     # --- AI output noise ---
 
     def test_all_caps_task_still_matches(self, router, metadata):

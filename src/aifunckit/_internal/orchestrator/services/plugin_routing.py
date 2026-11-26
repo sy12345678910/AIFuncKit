@@ -32,6 +32,7 @@ class PluginRoutingService:
             raise PluginNotFoundError("Database with plugins is empty or not found")
 
         task_lower: str = task.lower()
+
         handler = self._routes.get(self.routing_model)
         if handler is None:
             raise RoutingModeDoesNotExist(

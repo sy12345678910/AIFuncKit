@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
+from aifunckit._internal.log_config import logger
 from aifunckit._internal.schemas.pipeline_context import PipelineContext
 from aifunckit._internal.orchestrator.pipelines.base import BasePipeline
 from aifunckit._internal.orchestrator.pipelines.import_strategies.timeout import TimeoutExecutionStrategy
@@ -33,6 +34,7 @@ class TimeoutPipeline(BasePipeline):
         try:
             await asyncio.wait_for(self._execute_task_node(task, context), timeout=timeout_seconds)
         except asyncio.TimeoutError:
+            logger.warning("Task '%s' timed out after %.2fs", task, timeout_seconds)
             context.execution_results.append({
                 "action_name": str(task),
                 "plugin_name": "timeout",
@@ -40,4 +42,7 @@ class TimeoutPipeline(BasePipeline):
                 "args": {},
                 "result": {"timeout": timeout_seconds, "status": "timed_out"},
             })
+        except Exception as exc:
+            logger.error("TimeoutPipeline failed for task '%s': %s", task, exc, exc_info=True)
+            raise
     
