@@ -106,13 +106,30 @@ class TestArgumentExtraction:
 
     # --- AI noise: markdown code block ---
 
-    @pytest.mark.parametrize("bad_response", [
-        "```json\n{\"x\": 1}\n```",   # markdown block
-        "```\n{\"x\": 1}\n```",       # bare fenced block
+    @pytest.mark.parametrize("wrapped_response", [
+        "```json\n{\"x\": 1}\n```",        # markdown block
+        "```\n{\"x\": 1}\n```",            # bare fenced block
         "Here is the JSON:\n{\"x\": 1}",   # prose prefix
-        "RESULT: {x: 1}",             # invalid JSON with CAPS prefix
-        "Sure! The answer is 42.",    # plain text
-        "",                           # empty
+    ])
+    @pytest.mark.asyncio
+    async def test_wrapped_valid_json_is_cleaned_and_parsed(self, service, wrapped_response):
+        with patch(
+            "aifunckit._internal.orchestrator.services.argument_extraction.get_data_generated_by_model",
+            new=AsyncMock(return_value=wrapped_response),
+        ):
+            result = await service.extract(
+                task="some task",
+                expected_args={"x": int},
+                current_context={},
+                llm_config=_llm_config(),
+                memory_example=None,
+            )
+        assert result == {"x": 1}
+
+    @pytest.mark.parametrize("bad_response", [
+        "RESULT: {x: 1}",             # invalid JSON syntax (unquoted key)
+        "Sure! The answer is 42.",    # plain text without JSON
+        "",                           # empty string
         None,                         # NoneType
     ])
     @pytest.mark.asyncio
@@ -129,6 +146,7 @@ class TestArgumentExtraction:
                 memory_example=None,
             )
         assert result == {}
+
 
     # --- LLM raises ---
 

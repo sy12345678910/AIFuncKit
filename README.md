@@ -238,31 +238,27 @@ User Prompt ──► Guardrails (Sanitizer) ──► RAG Memory Lookup ──�
 - [Pipeline Execution](src/orchestrator/pipelines/import_strategies/): Here pipeline is executed methods. It have the same variants of executing as topology resolver.
 
 ### Architecture of project
-```
 AIFuncKit/
+├── pyproject.toml                  # Package configuration, dependencies, and Hatchling build settings
+├── pytest.ini                      # Pytest async configuration
+├── README.md
 ├── src/
-│   ├── engine.py                     # Main entry point (AIEngine)
-│   ├── sdk.py                        # Plugin SDK (BasePlugin, @decribe, @description)
-│   ├── log_config.py
-│   ├── orchestrator/                 # Execution core & pipeline routing
-│   │   ├── pipeline.py               # MasterOrchestrationEngine
-│   │   ├── topology_resolver.py      # Pipeline topology matcher (linear, parallel, loops)
-│   │   ├── general_methods.py
-│   │   ├── pipelines/                # Execution strategies (linear, parallel, for_each, schedule)
-│   │   └── services/                 # Core subsystems
-│   │       ├── sanitizer.py          # Prompt injection guard (Regex + ONNX)
-│   │       ├── plugin_routing.py     # BLAS vector & keyword task-to-plugin router
-│   │       ├── prompt_decomposition.py
-│   │       ├── argument_extraction.py
-│   │       ├── action_execution.py
-│   │       ├── break_circus.py       # Circuit breaker
-│   │       └── state_manager.py      # Context snapshotting & rollback
-│   ├── memory/                       # Vector memory & RAG storage (SQLite + FastEmbed ONNX)
-│   ├── model_provide/                # LLM providers (OpenAI, Ollama, Hugging Face, etc)
-│   ├── schemas/                      # Pydantic data contracts & PipelineContext
-│   └── exceptions/
-└── pyproject.toml
-```
+│   └── aifunckit/                  # Public PyPI package
+│       ├── __init__.py             # Public exports: AIEngine, BasePlugin, describe, exceptions
+│       ├── engine.py               # AIEngine facade (entry point for users)
+│       ├── sdk.py                  # Plugin SDK: BasePlugin and @describe decorator
+│       ├── exceptions/             # Public exception hierarchy (pipeline, prompt, vector, DB)
+│       └── _internal/              # Private runtime implementation (not part of public API)
+│           ├── log_config.py       # Queued async-safe logging setup
+│           ├── engine/             # Engine internals: PluginRegisterClass & RuntimeManager
+│           ├── orchestrator/       # MasterOrchestrationEngine, TopologyResolver, services & pipelines
+│           │   ├── pipelines/      # BasePipeline facade, StepExecuter, NodeSolver, ValidationManager & topologies
+│           │   └── services/       # Decomposition, routing, argument extraction, sanitizer, circuit breaker
+│           ├── memory/             # SQLite + vector RAG memory & embeddings
+│           ├── model_provide/      # LLM provider adapters (Ollama, Gemini, Anthropic, OpenAI, HF, llama.cpp)
+│           ├── plugins/            # Built-in plugins (e.g. LinuxSystemPlugin)
+│           └── schemas/            # Pydantic data & context models
+└── tests/                          # Unit & integration test suite
 
 ## License
 This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details. 
